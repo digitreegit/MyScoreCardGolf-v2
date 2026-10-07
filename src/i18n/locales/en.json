@@ -126,7 +126,8 @@
     "lastSynced": "Last synced {{time}}",
     "syncOffline": "Offline — will sync when back online",
     "importExport": "Import / export spreadsheet",
-    "scan": "Scan a scorecard"
+    "scan": "Scan a scorecard",
+    "syncRetrying": "Sync failed — retrying automatically at {{time}}"
   },
   "io": {
     "title": "Spreadsheet",

@@ -7,6 +7,7 @@
 
 import { AppState } from 'react-native';
 
+import { retryDelayMs } from '@/domain/syncRetry';
 import type { Round, RoundHole } from '@/domain/types';
 import { isBackendConfigured } from '@/lib/env';
 import { getSupabase } from '@/lib/supabase';
@@ -22,9 +23,15 @@ let currentUserId: string | null = null;
 let running: Promise<void> | null = null;
 let rerun = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
+let failures = 0; // consecutive failed syncs; drives the retry backoff
 
-export type SyncStatus = { state: 'idle' | 'syncing' | 'offline' | 'error'; lastSyncedAt: string | null };
-let status: SyncStatus = { state: 'idle', lastSyncedAt: null };
+export type SyncStatus = {
+  state: 'idle' | 'syncing' | 'offline' | 'error';
+  lastSyncedAt: string | null;
+  /** When the next automatic retry runs after a failure (ISO), or null. */
+  retryAt: string | null;
+};
+let status: SyncStatus = { state: 'idle', lastSyncedAt: null, retryAt: null };
 const statusListeners = new Set<(s: SyncStatus) => void>();
 
 function setStatus(next: Partial<SyncStatus>) {
@@ -43,7 +50,14 @@ export function onSyncStatus(listener: (s: SyncStatus) => void): () => void {
 
 export function setSyncUser(userId: string | null): void {
   currentUserId = userId;
-  if (userId) requestSync(0);
+  failures = 0;
+  if (userId) {
+    requestSync(0);
+  } else {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    setStatus({ state: 'idle', retryAt: null });
+  }
 }
 
 /** Debounced background sync; safe to call after every edit. */
@@ -63,18 +77,23 @@ export async function syncNow(): Promise<void> {
     return running;
   }
   running = (async () => {
-    setStatus({ state: 'syncing' });
+    setStatus({ state: 'syncing', retryAt: null });
     try {
       do {
         rerun = false;
         await push();
         await pull();
       } while (rerun);
+      failures = 0;
       setStatus({ state: 'idle', lastSyncedAt: new Date().toISOString() });
     } catch (err) {
       const offline = err instanceof TypeError; // fetch network failure
-      setStatus({ state: offline ? 'offline' : 'error' });
       if (!offline) console.warn('sync failed', err);
+      // Retry on our own with backoff; edits, app foregrounding and "Sync now" still sync sooner.
+      failures += 1;
+      const delay = retryDelayMs(failures);
+      setStatus({ state: offline ? 'offline' : 'error', retryAt: new Date(Date.now() + delay).toISOString() });
+      requestSync(delay);
     } finally {
       running = null;
     }

@@ -4,6 +4,7 @@ import { formatDistance, greenDistances, haversineMeters, nearestIndex } from '.
 import { escapeCellText, parseSheetDate, roundsToRows, rowsToRounds } from '../spreadsheet/roundsSheet';
 import { fileToRows, rowsToFile } from '../spreadsheet/workbook';
 import { computeStats, roundTotals } from '../stats';
+import { MAX_RETRY_DELAY_MS, retryDelayMs } from '../syncRetry';
 import { emptyHoles, type Round, type RoundWithHoles } from '../types';
 import { convertV1Rounds } from '../v1Convert';
 
@@ -129,5 +130,19 @@ describe('v1 import', () => {
     expect(out[0].round.source).toBe('v1');
     expect(out[1].round).toMatchObject({ tee_box: 'blue', exclude_from_stats: true, holes_count: 18 });
     expect(convertV1Rounds('not json', { userId: null, newId, now: NOW })).toEqual([]);
+  });
+});
+
+describe('sync retry backoff', () => {
+  it('grows from 5s to a 5 minute cap', () => {
+    const mid = 0.5; // no jitter
+    expect([1, 2, 3, 4, 5, 6, 20].map((n) => retryDelayMs(n, mid))).toEqual([
+      5_000, 15_000, 30_000, 60_000, 120_000, MAX_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS,
+    ]);
+  });
+
+  it('keeps jitter within ±20%', () => {
+    expect(retryDelayMs(1, 0)).toBe(4_000);
+    expect(retryDelayMs(1, 1)).toBe(6_000);
   });
 });

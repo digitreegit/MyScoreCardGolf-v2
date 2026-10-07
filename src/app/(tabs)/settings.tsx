@@ -93,7 +93,9 @@ export default function SettingsScreen() {
                 <Label muted>
                   {sync.state === 'offline'
                     ? t('settings.syncOffline')
-                    : sync.lastSyncedAt
+                    : sync.state === 'error' && sync.retryAt
+                      ? t('settings.syncRetrying', { time: new Date(sync.retryAt).toLocaleTimeString() })
+                      : sync.lastSyncedAt
                       ? t('settings.lastSynced', { time: new Date(sync.lastSyncedAt).toLocaleTimeString() })
                       : ''}
                   {unsynced > 0 ? ` · ${unsynced} ${t('rounds.unsynced')}` : ''}
