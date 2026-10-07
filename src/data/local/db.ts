@@ -48,11 +48,20 @@ const MIGRATIONS: string[] = [
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
+// All writes go through one queue. Exclusive transactions use their own connection, so a sync
+// pass writing while the user taps a score failed with "database is locked" (SQLITE_BUSY).
+let writeTail: Promise<unknown> = Promise.resolve();
+function locked<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeTail.then(task, task);
+  writeTail = run.catch(() => undefined);
+  return run;
+}
+
 export function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = (async () => {
       const db = await SQLite.openDatabaseAsync('myscorecard.db');
-      await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+      await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
       const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
       let version = row?.user_version ?? 0;
       while (version < MIGRATIONS.length) {
@@ -150,24 +159,30 @@ export async function selectHole(roundId: string, holeNumber: number): Promise<R
 
 // ───────────────────────────── local writes (always dirty)
 
-export async function writeRoundWithHoles(items: RoundWithHoles[]): Promise<void> {
-  const db = await getDb();
-  await db.withExclusiveTransactionAsync(async (tx) => {
-    for (const { round, holes } of items) {
-      await tx.runAsync(UPSERT_ROUND, [...roundParams(round), 1]);
-      for (const h of holes) await tx.runAsync(UPSERT_HOLE, [...holeParams(h), 1]);
-    }
+export function writeRoundWithHoles(items: RoundWithHoles[]): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.withExclusiveTransactionAsync(async (tx) => {
+      for (const { round, holes } of items) {
+        await tx.runAsync(UPSERT_ROUND, [...roundParams(round), 1]);
+        for (const h of holes) await tx.runAsync(UPSERT_HOLE, [...holeParams(h), 1]);
+      }
+    });
   });
 }
 
-export async function writeRound(round: Round): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(UPSERT_ROUND, [...roundParams(round), 1]);
+export function writeRound(round: Round): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.runAsync(UPSERT_ROUND, [...roundParams(round), 1]);
+  });
 }
 
-export async function writeHole(hole: RoundHole): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(UPSERT_HOLE, [...holeParams(hole), 1]);
+export function writeHole(hole: RoundHole): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.runAsync(UPSERT_HOLE, [...holeParams(hole), 1]);
+  });
 }
 
 // ───────────────────────────── sync support
@@ -180,61 +195,69 @@ export async function selectDirty(): Promise<{ rounds: Round[]; holes: RoundHole
 }
 
 /** Clears the dirty flag only if the row was not edited again while the push was in flight. */
-export async function markPushed(rounds: Round[], holes: RoundHole[]): Promise<void> {
-  const db = await getDb();
-  await db.withExclusiveTransactionAsync(async (tx) => {
-    for (const r of rounds) {
-      await tx.runAsync('UPDATE rounds SET dirty = 0 WHERE id = ? AND updated_at = ?', r.id, r.updated_at);
-    }
-    for (const h of holes) {
-      await tx.runAsync(
-        'UPDATE round_holes SET dirty = 0 WHERE round_id = ? AND hole_number = ? AND updated_at = ?',
-        h.round_id,
-        h.hole_number,
-        h.updated_at,
-      );
-    }
+export function markPushed(rounds: Round[], holes: RoundHole[]): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.withExclusiveTransactionAsync(async (tx) => {
+      for (const r of rounds) {
+        await tx.runAsync('UPDATE rounds SET dirty = 0 WHERE id = ? AND updated_at = ?', r.id, r.updated_at);
+      }
+      for (const h of holes) {
+        await tx.runAsync(
+          'UPDATE round_holes SET dirty = 0 WHERE round_id = ? AND hole_number = ? AND updated_at = ?',
+          h.round_id,
+          h.hole_number,
+          h.updated_at,
+        );
+      }
+    });
   });
 }
 
 /** Applies pulled server rows with last-write-wins; a newer unpushed local edit is kept. */
-export async function applyRemote(rounds: Round[], holes: RoundHole[]): Promise<void> {
-  const db = await getDb();
-  await db.withExclusiveTransactionAsync(async (tx) => {
-    for (const r of rounds) {
-      const local = await tx.getFirstAsync<{ updated_at: string; dirty: number }>(
-        'SELECT updated_at, dirty FROM rounds WHERE id = ?',
-        r.id,
-      );
-      if (local && local.dirty === 1 && local.updated_at >= r.updated_at) continue;
-      await tx.runAsync(UPSERT_ROUND, [...roundParams(r), 0]);
-    }
-    for (const h of holes) {
-      const local = await tx.getFirstAsync<{ updated_at: string; dirty: number }>(
-        'SELECT updated_at, dirty FROM round_holes WHERE round_id = ? AND hole_number = ?',
-        h.round_id,
-        h.hole_number,
-      );
-      if (local && local.dirty === 1 && local.updated_at >= h.updated_at) continue;
-      const parent = await tx.getFirstAsync('SELECT 1 FROM rounds WHERE id = ?', h.round_id);
-      if (!parent) continue; // parent arrives in a later page; the next pull picks this hole up again
-      await tx.runAsync(UPSERT_HOLE, [...holeParams(h), 0]);
-    }
+export function applyRemote(rounds: Round[], holes: RoundHole[]): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.withExclusiveTransactionAsync(async (tx) => {
+      for (const r of rounds) {
+        const local = await tx.getFirstAsync<{ updated_at: string; dirty: number }>(
+          'SELECT updated_at, dirty FROM rounds WHERE id = ?',
+          r.id,
+        );
+        if (local && local.dirty === 1 && local.updated_at >= r.updated_at) continue;
+        await tx.runAsync(UPSERT_ROUND, [...roundParams(r), 0]);
+      }
+      for (const h of holes) {
+        const local = await tx.getFirstAsync<{ updated_at: string; dirty: number }>(
+          'SELECT updated_at, dirty FROM round_holes WHERE round_id = ? AND hole_number = ?',
+          h.round_id,
+          h.hole_number,
+        );
+        if (local && local.dirty === 1 && local.updated_at >= h.updated_at) continue;
+        const parent = await tx.getFirstAsync('SELECT 1 FROM rounds WHERE id = ?', h.round_id);
+        if (!parent) continue; // parent arrives in a later page; the next pull picks this hole up again
+        await tx.runAsync(UPSERT_HOLE, [...holeParams(h), 0]);
+      }
+    });
   });
 }
 
 /** After sign-in, guest rounds become the user's rounds and are queued for upload. */
-export async function claimGuestData(userId: string): Promise<number> {
-  const db = await getDb();
-  const res = await db.runAsync('UPDATE rounds SET user_id = ?, dirty = 1 WHERE user_id IS NULL', userId);
-  await db.runAsync('UPDATE round_holes SET user_id = ?, dirty = 1 WHERE user_id IS NULL', userId);
-  return res.changes;
+export function claimGuestData(userId: string): Promise<number> {
+  return locked(async () => {
+    const db = await getDb();
+    const res = await db.runAsync('UPDATE rounds SET user_id = ?, dirty = 1 WHERE user_id IS NULL', userId);
+    await db.runAsync('UPDATE round_holes SET user_id = ?, dirty = 1 WHERE user_id IS NULL', userId);
+    return res.changes;
+  });
 }
 
 /** On sign-out the account's data is removed from the device (it lives on the server). */
-export async function clearAccountData(): Promise<void> {
-  const db = await getDb();
-  await db.execAsync("DELETE FROM round_holes; DELETE FROM rounds; DELETE FROM kv WHERE key LIKE 'sync:%';");
+export function clearAccountData(): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.execAsync("DELETE FROM round_holes; DELETE FROM rounds; DELETE FROM kv WHERE key LIKE 'sync:%';");
+  });
 }
 
 export async function countUnsynced(): Promise<number> {
@@ -253,9 +276,11 @@ export async function kvGet(key: string): Promise<string | null> {
   return row?.value ?? null;
 }
 
-export async function kvSet(key: string, value: string): Promise<void> {
-  const db = await getDb();
-  await db.runAsync('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', key, value);
+export function kvSet(key: string, value: string): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.runAsync('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', key, value);
+  });
 }
 
 // ───────────────────────────── course cache
@@ -266,7 +291,9 @@ export async function getCachedCourse(id: string): Promise<string | null> {
   return row?.json ?? null;
 }
 
-export async function putCachedCourse(id: string, json: string, at: string): Promise<void> {
-  const db = await getDb();
-  await db.runAsync('INSERT OR REPLACE INTO course_cache (id, json, downloaded_at) VALUES (?, ?, ?)', id, json, at);
+export function putCachedCourse(id: string, json: string, at: string): Promise<void> {
+  return locked(async () => {
+    const db = await getDb();
+    await db.runAsync('INSERT OR REPLACE INTO course_cache (id, json, downloaded_at) VALUES (?, ?, ?)', id, json, at);
+  });
 }

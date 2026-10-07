@@ -14,16 +14,20 @@ import { getSupabase } from '@/lib/supabase';
 
 import { emitDataChanged } from '../events';
 import * as db from '../local/db';
+import { subscribeToRoundChanges, unsubscribeFromRoundChanges } from './liveUpdates';
 
 const PUSH_CHUNK = 200;
 const PULL_PAGE = 500;
 const DEBOUNCE_MS = 1500;
+const REMOTE_CHANGE_DELAY_MS = 500; // coalesces a burst of realtime events into one pull
+const POLL_MS = 60_000; // fallback pull while the app is open, in case a realtime event is missed
 
 let currentUserId: string | null = null;
 let running: Promise<void> | null = null;
 let rerun = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let failures = 0; // consecutive failed syncs; drives the retry backoff
+let poll: ReturnType<typeof setInterval> | null = null;
 
 export type SyncStatus = {
   state: 'idle' | 'syncing' | 'offline' | 'error';
@@ -51,13 +55,28 @@ export function onSyncStatus(listener: (s: SyncStatus) => void): () => void {
 export function setSyncUser(userId: string | null): void {
   currentUserId = userId;
   failures = 0;
-  if (userId) {
+  if (userId && isBackendConfigured) {
+    // Edits made on the web (or another phone) arrive while this app stays open.
+    subscribeToRoundChanges(userId, () => requestSync(REMOTE_CHANGE_DELAY_MS));
+    startPolling();
     requestSync(0);
   } else {
+    unsubscribeFromRoundChanges();
+    stopPolling();
     if (timer) clearTimeout(timer);
     timer = null;
     setStatus({ state: 'idle', retryAt: null });
   }
+}
+
+function startPolling() {
+  stopPolling();
+  poll = setInterval(() => requestSync(0), POLL_MS);
+}
+
+function stopPolling() {
+  if (poll) clearInterval(poll);
+  poll = null;
 }
 
 /** Debounced background sync; safe to call after every edit. */
@@ -162,5 +181,11 @@ function normalizeTimestamps(row: Record<string, unknown>) {
 }
 
 AppState.addEventListener('change', (state) => {
-  if (state === 'active') requestSync(0);
+  if (!currentUserId) return;
+  if (state === 'active') {
+    startPolling();
+    requestSync(0);
+  } else {
+    stopPolling(); // no background polling; the realtime socket is paused by the OS anyway
+  }
 });
