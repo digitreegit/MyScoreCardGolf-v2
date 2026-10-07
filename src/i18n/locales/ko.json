@@ -57,7 +57,10 @@
     "excludeFromStats": "통계에서 제외",
     "total": "합계",
     "toPar": "파 대비",
-    "putts": "퍼트"
+    "putts": "퍼트",
+    "changeCourse": "변경",
+    "noNearby": "50km 안에 골프장이 없어요.",
+    "locationUnavailable": "위치를 확인하지 못했어요. 실외에서 다시 시도하거나 이름으로 검색하세요."
   },
   "score": {
     "hole": "홀",

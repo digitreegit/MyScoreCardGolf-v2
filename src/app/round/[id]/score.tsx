@@ -44,15 +44,29 @@ export default function ScoreEntryScreen() {
     }, []),
   );
 
-  const holes = data?.holes ?? [];
+  // Taps update the card instantly; writes are queued behind (repository serializes them).
+  const [pending, setPending] = useState<Record<string, number | null>>({});
+  const pendingKey = (n: number, f: Field) => `${n}:${f}`;
+  const holes = (data?.holes ?? []).map((h) => {
+    const s = pending[pendingKey(h.hole_number, 'strokes')];
+    const p = pending[pendingKey(h.hole_number, 'putts')];
+    return s === undefined && p === undefined ? h : { ...h, ...(s !== undefined && { strokes: s }), ...(p !== undefined && { putts: p }) };
+  });
   const holeAt = (n: number) => holes.find((h) => h.hole_number === n);
 
   const setValue = useCallback(
-    async (hole: RoundHole, field: Field, value: number | null, advance = true) => {
-      await updateHole(hole, { [field]: value });
-      if (!advance) return;
+    (hole: RoundHole, field: Field, value: number | null) => {
+      const key = pendingKey(hole.hole_number, field);
+      setPending((prev) => ({ ...prev, [key]: value }));
       if (field === 'strokes') setSel({ hole: hole.hole_number, field: 'putts' });
       else if (hole.hole_number < holes.length) setSel({ hole: hole.hole_number + 1, field: 'strokes' });
+      void updateHole(hole, { [field]: value }).finally(() =>
+        setPending((prev) => {
+          if (prev[key] !== value) return prev; // a newer tap on the same cell is still in flight
+          const { [key]: _done, ...rest } = prev;
+          return rest;
+        }),
+      );
     },
     [holes.length],
   );
@@ -129,6 +143,7 @@ export default function ScoreEntryScreen() {
               holes={holes.filter((h) => h.hole_number >= start && h.hole_number < start + 9)}
               subtotalLabel={start === 1 ? t('score.out') : t('score.in')}
               grandTotal={start === 10 || holes.length === 9 ? totals : null}
+              coursePar={holes.reduce((sum, h) => sum + h.par, 0)}
               labels={{ hole: t('score.hole'), par: t('score.par'), score: t('score.score'), putts: t('score.putts'), total: t('score.total') }}
               sel={sel}
               onSelect={setSel}
@@ -143,7 +158,7 @@ export default function ScoreEntryScreen() {
             hole={selectedHole}
             field={sel.field}
             labels={{ hole: t('score.hole'), score: t('score.score'), putts: t('score.putts') }}
-            onPick={(v) => void setValue(selectedHole, sel.field, v)}
+            onPick={(v) => setValue(selectedHole, sel.field, v)}
             onField={(f) => setSel({ hole: sel.hole, field: f })}
           />
         )}
@@ -157,6 +172,7 @@ function NineGrid({
   holes,
   subtotalLabel,
   grandTotal,
+  coursePar,
   labels,
   sel,
   onSelect,
@@ -165,6 +181,7 @@ function NineGrid({
   holes: RoundHole[];
   subtotalLabel: string;
   grandTotal: ReturnType<typeof roundTotals> | null;
+  coursePar: number;
   labels: { hole: string; par: string; score: string; putts: string; total: string };
   sel: Selection;
   onSelect: (s: Selection) => void;
@@ -174,19 +191,30 @@ function NineGrid({
   const to = holes[holes.length - 1].hole_number;
   const sub = (k: 'par' | 'strokes' | 'putts') => sumRange(holes, from, to, k) ?? '';
 
-  const cell = (content: string | number, opts: { header?: boolean; color?: string; bg?: string; onPress?: () => void; key: string }) => (
+  const cell = (
+    content: string | number,
+    opts: { header?: boolean; label?: boolean; color?: string; bg?: string; onPress?: () => void; key: string },
+  ) => (
     <Pressable
       key={opts.key}
       onPress={opts.onPress}
       disabled={!opts.onPress}
-      style={[styles.cell, { borderColor: c.border, backgroundColor: opts.bg ?? (opts.header ? c.surfaceAlt : c.surface) }]}>
-      <Text style={[styles.cellText, { color: opts.color ?? c.text, fontWeight: opts.header ? '600' : '700' }]}>{content}</Text>
+      style={[
+        styles.cell,
+        opts.label && styles.labelCell,
+        { borderColor: c.border, backgroundColor: opts.bg ?? (opts.header ? c.surfaceAlt : c.surface) },
+      ]}>
+      <Text
+        numberOfLines={1}
+        style={[styles.cellText, opts.label && styles.labelText, { color: opts.color ?? c.text, fontWeight: opts.header ? '600' : '700' }]}>
+        {content}
+      </Text>
     </Pressable>
   );
 
   const row = (label: string, key: string, render: (h: RoundHole) => ReturnType<typeof cell>, subtotal: string | number, total?: string | number) => (
     <View style={styles.gridRow} key={key}>
-      {cell(label, { header: true, key: `${key}-label` })}
+      {cell(label, { header: true, key: `${key}-label`, label: true })}
       {holes.map(render)}
       {cell(subtotal, { header: true, key: `${key}-sub` })}
       {grandTotal && cell(total ?? '', { header: true, key: `${key}-tot` })}
@@ -198,7 +226,7 @@ function NineGrid({
   return (
     <View style={[styles.grid, { borderColor: c.border }]}>
       {row(labels.hole, 'hole', (h) => cell(h.hole_number, { header: true, key: `h${h.hole_number}` }), subtotalLabel, grandTotal ? labels.total : undefined)}
-      {row(labels.par, 'par', (h) => cell(h.par, { header: true, key: `p${h.hole_number}` }), sub('par'), grandTotal?.par)}
+      {row(labels.par, 'par', (h) => cell(h.par, { header: true, key: `p${h.hole_number}` }), sub('par'), grandTotal ? coursePar : undefined)}
       {row(
         labels.score,
         'score',
@@ -308,12 +336,13 @@ const styles = StyleSheet.create({
   gridRow: { flexDirection: 'row' },
   cell: { flex: 1, minHeight: 34, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
   cellText: { fontSize: 16, fontVariant: ['tabular-nums'] },
+  labelCell: { flex: 1.7 },
+  labelText: { fontSize: 13 },
   pad: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: spacing.sm, gap: spacing.sm },
   padTab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm, alignItems: 'center' },
   padGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   padKey: {
-    width: '18%',
-    flexGrow: 1,
+    width: '18.4%',
     minHeight: 46,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,

@@ -23,7 +23,7 @@ export function useDeviceLocation(active: boolean): DeviceLocation {
     let sub: Location.LocationSubscription | null = null;
     let cancelled = false;
 
-    void (async () => {
+    const start = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (cancelled) return;
       if (status !== Location.PermissionStatus.GRANTED) {
@@ -41,7 +41,9 @@ export function useDeviceLocation(active: boolean): DeviceLocation {
           }),
       );
       if (cancelled) sub.remove();
-    })();
+    };
+    // A missing GPS fix just leaves distances blank; the watch keeps retrying on the native side.
+    start().catch(() => undefined);
 
     return () => {
       cancelled = true;

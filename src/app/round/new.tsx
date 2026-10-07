@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform, Pressable, Text, View } from 'react-native';
+import { Alert, Keyboard, Platform, Pressable, Text, View } from 'react-native';
 
 import { saveRounds } from '@/data/repository';
 import { emptyHoles, nowIso, TEE_BOXES, todayLocalDate, type Round, type TeeBox } from '@/domain/types';
@@ -32,8 +32,15 @@ export default function NewRoundScreen() {
 
   const findNearby = async () => {
     // Matched against the bundled course list on the device — the position is not sent anywhere.
-    const me = await getCurrentPositionOnce();
-    if (me) setNearby(nearestCourses(me, 5));
+    try {
+      const me = await getCurrentPositionOnce();
+      if (!me) return; // permission denied
+      const found = nearestCourses(me, 5);
+      if (!found.length) Alert.alert(t('round.noNearby'));
+      setNearby(found);
+    } catch {
+      Alert.alert(t('round.locationUnavailable')); // no GPS fix yet (indoors, airplane mode, simulator)
+    }
   };
 
   const create = async () => {
@@ -75,15 +82,32 @@ export default function NewRoundScreen() {
   return (
     <Screen>
       <Card>
-        <Field
-          label={t('round.course')}
-          placeholder={t('round.coursePlaceholder')}
-          value={course ? course.name : query}
-          onChangeText={(v) => {
-            setCourse(null);
-            setQuery(v);
-          }}
-        />
+        {course ? (
+          // Selected course replaces the input: a focused TextInput would receive the IME's late
+          // composition commit (Korean/Japanese keyboards) and clear the selection.
+          <View style={{ gap: spacing.xs }}>
+            <Label muted>{t('round.course')}</Label>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceAlt }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.text, fontWeight: '600' }}>{course.name}</Text>
+                <Text style={{ color: c.textMuted }}>
+                  {course.city}, {course.state}
+                </Text>
+              </View>
+              <Pressable onPress={() => setCourse(null)} hitSlop={8}>
+                <Text style={{ color: c.primary, fontWeight: '600' }}>{t('round.changeCourse')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Field
+            label={t('round.course')}
+            placeholder={t('round.coursePlaceholder')}
+            value={query}
+            onChangeText={setQuery}
+          />
+        )}
         {Platform.OS !== 'web' && !query && !course && (
           <Button title={t('round.findNearby')} variant="secondary" onPress={() => void findNearby()} />
         )}
@@ -91,7 +115,10 @@ export default function NewRoundScreen() {
           suggestions.map((s) => (
             <Pressable
               key={s.id}
-              onPress={() => setCourse(s)}
+              onPress={() => {
+                Keyboard.dismiss();
+                setCourse(s);
+              }}
               style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceAlt }}>
               <Text style={{ color: c.text, fontWeight: '600' }}>{s.name}</Text>
               <Text style={{ color: c.textMuted }}>

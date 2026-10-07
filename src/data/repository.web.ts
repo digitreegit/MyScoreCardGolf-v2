@@ -5,6 +5,7 @@ import { nowIso, type FairwayResult, type Round, type RoundHole, type RoundWithH
 import { getSupabase } from '@/lib/supabase';
 
 import { emitDataChanged } from './events';
+import { serial } from './serial';
 
 type RoundRow = Round & { server_updated_at?: string; round_holes?: RoundHole[] };
 
@@ -45,7 +46,10 @@ export async function listRounds(): Promise<RoundWithHoles[]> {
 export async function getRound(id: string): Promise<RoundWithHoles | null> {
   const { data, error } = await getSupabase().from('rounds').select('*, round_holes(*)').eq('id', id).maybeSingle();
   if (error) throw error;
-  return data ? toItem(data as RoundRow) : null;
+  if (!data) return null;
+  const item = toItem(data as RoundRow);
+  remember(item);
+  return item;
 }
 
 export async function saveRounds(items: RoundWithHoles[]): Promise<void> {
@@ -59,16 +63,39 @@ export async function saveRounds(items: RoundWithHoles[]): Promise<void> {
   }
 }
 
-export async function updateRound(round: Round, patch: Partial<Round>): Promise<Round> {
-  const next = { ...round, ...patch, updated_at: nowIso() };
-  await push([next], []);
-  return next;
+// Web keeps the last written row per key so rapid edits build on each other, not on a stale snapshot.
+const lastRound = new Map<string, Round>();
+const lastHole = new Map<string, RoundHole>();
+const holeKey = (h: RoundHole) => `${h.round_id}:${h.hole_number}`;
+
+/** Server rows newer than our last write (e.g. edited on the phone) replace the cached copy. */
+function remember({ round, holes }: RoundWithHoles) {
+  const r = lastRound.get(round.id);
+  if (!r || new Date(round.updated_at) >= new Date(r.updated_at)) lastRound.set(round.id, round);
+  for (const h of holes) {
+    const c = lastHole.get(holeKey(h));
+    if (!c || new Date(h.updated_at) >= new Date(c.updated_at)) lastHole.set(holeKey(h), h);
+  }
 }
 
-export async function updateHole(hole: RoundHole, patch: Partial<RoundHole>): Promise<RoundHole> {
-  const next = { ...hole, ...patch, updated_at: nowIso() };
-  await push([], [next]);
-  return next;
+export function updateRound(round: Round, patch: Partial<Round>): Promise<Round> {
+  return serial(async () => {
+    const base = lastRound.get(round.id) ?? round;
+    const next = { ...base, ...patch, updated_at: nowIso() };
+    await push([next], []);
+    lastRound.set(round.id, next);
+    return next;
+  });
+}
+
+export function updateHole(hole: RoundHole, patch: Partial<RoundHole>): Promise<RoundHole> {
+  return serial(async () => {
+    const base = lastHole.get(holeKey(hole)) ?? hole;
+    const next = { ...base, ...patch, updated_at: nowIso() };
+    await push([], [next]);
+    lastHole.set(holeKey(hole), next);
+    return next;
+  });
 }
 
 export async function deleteRound(round: Round): Promise<void> {

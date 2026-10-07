@@ -5,6 +5,7 @@ import { nowIso, type Round, type RoundHole, type RoundWithHoles } from '@/domai
 
 import { emitDataChanged } from './events';
 import * as db from './local/db';
+import { serial } from './serial';
 import { requestSync } from './sync/syncEngine';
 
 function changed() {
@@ -25,18 +26,26 @@ export async function saveRounds(items: RoundWithHoles[]): Promise<void> {
   changed();
 }
 
-export async function updateRound(round: Round, patch: Partial<Round>): Promise<Round> {
-  const next = { ...round, ...patch, updated_at: nowIso() };
-  await db.writeRound(next);
-  changed();
-  return next;
+/** Applies `patch` to the latest stored round; `round` only identifies the row. */
+export function updateRound(round: Round, patch: Partial<Round>): Promise<Round> {
+  return serial(async () => {
+    const latest = (await db.selectRound(round.id))?.round ?? round;
+    const next = { ...latest, ...patch, updated_at: nowIso() };
+    await db.writeRound(next);
+    changed();
+    return next;
+  });
 }
 
-export async function updateHole(hole: RoundHole, patch: Partial<RoundHole>): Promise<RoundHole> {
-  const next = { ...hole, ...patch, updated_at: nowIso() };
-  await db.writeHole(next);
-  changed();
-  return next;
+/** Applies `patch` to the latest stored hole; `hole` only identifies the row. */
+export function updateHole(hole: RoundHole, patch: Partial<RoundHole>): Promise<RoundHole> {
+  return serial(async () => {
+    const latest = (await db.selectHole(hole.round_id, hole.hole_number)) ?? hole;
+    const next = { ...latest, ...patch, updated_at: nowIso() };
+    await db.writeHole(next);
+    changed();
+    return next;
+  });
 }
 
 export async function deleteRound(round: Round): Promise<void> {

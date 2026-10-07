@@ -1,4 +1,4 @@
-import { Link, Stack, router } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,8 +17,10 @@ function RoundRow({ item }: { item: RoundWithHoles }) {
   const { round, holes } = item;
   const t = roundTotals(holes);
   return (
-    <Link href={`/round/${round.id}`} asChild>
-      <Pressable style={({ pressed }) => [styles.row, { backgroundColor: c.surface, borderColor: c.border, opacity: pressed ? 0.8 : 1 }]}>
+    // Plain Pressable: Link asChild drops function-style props, which flattened this row's layout.
+    <Pressable
+      onPress={() => router.push(`/round/${round.id}`)}
+      style={({ pressed }) => [styles.row, { backgroundColor: c.surface, borderColor: c.border, opacity: pressed ? 0.8 : 1 }]}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={[styles.course, { color: c.text }]} numberOfLines={1}>
             {round.course_name}
@@ -31,8 +33,7 @@ function RoundRow({ item }: { item: RoundWithHoles }) {
           <Text style={[styles.total, { color: c.text }]}>{t.holesPlayed ? t.strokes : '–'}</Text>
           {t.holesPlayed > 0 && <Text style={{ color: c.textMuted }}>{formatToPar(t.toPar)}</Text>}
         </View>
-      </Pressable>
-    </Link>
+    </Pressable>
   );
 }
 

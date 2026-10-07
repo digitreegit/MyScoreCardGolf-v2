@@ -138,6 +138,16 @@ export async function selectRound(id: string): Promise<RoundWithHoles | null> {
   return { round: toRound(r), holes: holes.map(toHole) };
 }
 
+export async function selectHole(roundId: string, holeNumber: number): Promise<RoundHole | null> {
+  const db = await getDb();
+  const h = await db.getFirstAsync<HoleRow>(
+    'SELECT * FROM round_holes WHERE round_id = ? AND hole_number = ?',
+    roundId,
+    holeNumber,
+  );
+  return h ? toHole(h) : null;
+}
+
 // ───────────────────────────── local writes (always dirty)
 
 export async function writeRoundWithHoles(items: RoundWithHoles[]): Promise<void> {

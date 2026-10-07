@@ -57,7 +57,10 @@
     "excludeFromStats": "Exclude from stats",
     "total": "Total",
     "toPar": "To par",
-    "putts": "Putts"
+    "putts": "Putts",
+    "changeCourse": "Change",
+    "noNearby": "No courses found within 50 km.",
+    "locationUnavailable": "Couldn't get your location. Try again outdoors, or search by name."
   },
   "score": {
     "hole": "Hole",
