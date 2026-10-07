@@ -4,58 +4,72 @@
 //
 //   npm run build:course-index
 //
-// Data © OpenStreetMap contributors, ODbL 1.0. The app must show this attribution
-// (Settings / About) when shipping this data.
+// Data © OpenStreetMap contributors, ODbL 1.0. The app shows this attribution in Settings.
 //
-// Output rows: [id, name, city, state, lat, lng]. Only courses with a name are kept.
-// Expect roughly 15–17k US courses (~1 MB). Course *geometry* (greens per hole) is a separate
-// import into the Supabase courses / course_holes tables.
+// Courses are fetched one state at a time so every row gets its state code (most OSM courses
+// have no addr:state tag). Output rows: [id, name, city, state, lat, lng]; unnamed courses are
+// dropped. Hole geometry is not part of this file — see supabase/functions/course-geometry.
 
 import { writeFile } from 'node:fs/promises';
 
 const OVERPASS = process.env.OVERPASS_URL ?? 'https://overpass-api.de/api/interpreter';
 
-const query = `
-[out:json][timeout:900];
-area["ISO3166-1"="US"][admin_level=2]->.us;
-(
-  way["leisure"="golf_course"]["name"](area.us);
-  relation["leisure"="golf_course"]["name"](area.us);
-);
-out center tags;
-`;
+const STATES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS',
+  'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC',
+  'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'PR',
+];
 
 const round5 = (n) => Math.round(n * 1e5) / 1e5;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function main() {
-  console.log('Querying Overpass (this can take several minutes)…');
+async function overpass(query, attempt = 1) {
   const res = await fetch(OVERPASS, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'MyScoreCardGolf course index builder' },
     body: new URLSearchParams({ data: query }),
   });
-  if (!res.ok) throw new Error(`Overpass ${res.status}: ${await res.text()}`);
-  const { elements } = await res.json();
-
-  const rows = [];
-  for (const el of elements) {
-    const center = el.center ?? (el.lat != null ? { lat: el.lat, lon: el.lon } : null);
-    const name = el.tags?.name?.trim();
-    if (!center || !name) continue;
-    rows.push([
-      `osm:${el.type}/${el.id}`,
-      name,
-      el.tags['addr:city'] ?? '',
-      el.tags['addr:state'] ?? '',
-      round5(center.lat),
-      round5(center.lon),
-    ]);
+  if ((res.status === 429 || res.status === 504) && attempt < 5) {
+    await sleep(15_000 * attempt); // Overpass asks clients to back off when busy
+    return overpass(query, attempt + 1);
   }
-  rows.sort((a, b) => a[1].localeCompare(b[1]));
+  if (!res.ok) throw new Error(`Overpass ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
 
-  const out = new URL('../assets/courses/us-index.json', import.meta.url);
-  await writeFile(out, JSON.stringify(rows));
-  console.log(`Wrote ${rows.length} courses to ${out.pathname}`);
+async function coursesInState(code) {
+  const { elements } = await overpass(`
+    [out:json][timeout:300];
+    area["ISO3166-2"="US-${code}"][admin_level=4]->.s;
+    (
+      way["leisure"="golf_course"]["name"](area.s);
+      relation["leisure"="golf_course"]["name"](area.s);
+    );
+    out center tags;
+  `);
+  return elements;
+}
+
+async function main() {
+  const rows = new Map(); // id → row; a course straddling a state line is kept once
+  for (const code of STATES) {
+    const elements = await coursesInState(code);
+    for (const el of elements) {
+      const center = el.center ?? (el.lat != null ? { lat: el.lat, lon: el.lon } : null);
+      const name = el.tags?.name?.trim();
+      const id = `osm:${el.type}/${el.id}`;
+      if (!center || !name || rows.has(id)) continue;
+      rows.set(id, [id, name, el.tags['addr:city']?.trim() ?? '', code, round5(center.lat), round5(center.lon)]);
+    }
+    console.log(`${code}: ${elements.length}`);
+    await sleep(1_000);
+  }
+
+  const out = [...rows.values()].sort((a, b) => a[1].localeCompare(b[1]));
+  const file = new URL('../assets/courses/us-index.json', import.meta.url);
+  await writeFile(file, JSON.stringify(out));
+  console.log(`Wrote ${out.length} courses to ${file.pathname}`);
 }
 
 main().catch((err) => {

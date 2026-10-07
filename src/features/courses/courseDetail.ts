@@ -12,7 +12,8 @@ export async function getCourseDetail(id: string): Promise<CourseDetail | null> 
   if (cached) return JSON.parse(cached) as CourseDetail;
   if (!isBackendConfigured) return null;
   const fresh = await fetchCourseDetail(id);
-  if (fresh) await putCachedCourse(id, JSON.stringify(fresh), nowIso());
+  // Courses without mapped holes aren't cached, so geometry added to OSM later still reaches the phone.
+  if (fresh?.holes.length) await putCachedCourse(id, JSON.stringify(fresh), nowIso());
   return fresh;
 }
 

@@ -52,10 +52,15 @@ Import the GitHub repo in Vercel; `vercel.json` already sets the build (`expo ex
 
 ## Course data
 
-- `assets/courses/us-index.json` — on-device course list for search / nearby. Currently 5 sample courses.
-  Rebuild from OpenStreetMap: `npm run build:course-index`.
-- Hole geometry (par, green front/center/back) lives in Supabase `courses` / `course_holes` (public read).
-  An importer is still to be written; GPS shows "no data" until a course has rows there.
+- `assets/courses/us-index.json` — on-device list of ~12.9k named US courses (id, name, city, state, lat, lng)
+  used for search and "nearby courses". Rebuild from OpenStreetMap with `npm run build:course-index`
+  (queries one state at a time; takes ~45 min on the public Overpass server).
+- Hole geometry (par, green front/center/back) is built on demand by the `course-geometry` edge function:
+  the first request for a course fetches its `golf=hole` / `golf=green` features from Overpass, computes
+  targets (`supabase/functions/_shared/courseGeometry.ts`), and caches them in `courses` / `course_holes`.
+  Courses with no mapped holes are re-checked after 30 days. The phone caches geometry in SQLite for offline use.
+- Public Overpass servers are shared and rate-limited, so a first lookup can fail; it is retried on the next
+  request. For production scale, self-host Overpass or pre-import popular courses.
 - OpenStreetMap data is © OpenStreetMap contributors under ODbL — attribution is shown in Settings.
 
 ## Migrating v1 users

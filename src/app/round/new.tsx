@@ -7,7 +7,7 @@ import { saveRounds } from '@/data/repository';
 import { emptyHoles, nowIso, TEE_BOXES, todayLocalDate, type Round, type TeeBox } from '@/domain/types';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getCourseDetail, prefetchCourse } from '@/features/courses/courseDetail';
-import { nearestCourses, searchCourses, type CourseSummary } from '@/features/courses/courseIndex';
+import { courseLocation, nearestCourses, searchCourses, type CourseSummary } from '@/features/courses/courseIndex';
 import { getCurrentPositionOnce } from '@/features/gps/useDeviceLocation';
 import { newId } from '@/lib/id';
 import { Button, Card, Field, Label, Screen, Segmented } from '@/ui/components';
@@ -92,7 +92,7 @@ export default function NewRoundScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: c.text, fontWeight: '600' }}>{course.name}</Text>
                 <Text style={{ color: c.textMuted }}>
-                  {course.city}, {course.state}
+                  {courseLocation(course)}
                 </Text>
               </View>
               <Pressable onPress={() => setCourse(null)} hitSlop={8}>
@@ -122,7 +122,7 @@ export default function NewRoundScreen() {
               style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceAlt }}>
               <Text style={{ color: c.text, fontWeight: '600' }}>{s.name}</Text>
               <Text style={{ color: c.textMuted }}>
-                {s.city}, {s.state}
+                {courseLocation(s)}
               </Text>
             </Pressable>
           ))}

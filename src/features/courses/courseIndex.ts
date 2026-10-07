@@ -23,6 +23,11 @@ function load(): CourseSummary[] {
   return cache;
 }
 
+/** "La Jolla, CA" — or just "CA" when OSM has no city for the course. */
+export function courseLocation(c: Pick<CourseSummary, 'city' | 'state'>): string {
+  return [c.city, c.state].filter(Boolean).join(', ');
+}
+
 const fold = (s: string) =>
   s
     .toLowerCase()
@@ -30,15 +35,27 @@ const fold = (s: string) =>
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9가-힣 ]/g, ' ');
 
+// Folded search text per course, computed once per data set (the full index has ~13k courses).
+const searchText = new WeakMap<CourseSummary[], Array<{ hay: string; name: string }>>();
+
+function foldedIndex(data: CourseSummary[]) {
+  let folded = searchText.get(data);
+  if (!folded) {
+    folded = data.map((c) => ({ hay: fold(`${c.name} ${c.city} ${c.state}`), name: fold(c.name) }));
+    searchText.set(data, folded);
+  }
+  return folded;
+}
+
 export function searchCourses(query: string, limit = 20, data: CourseSummary[] = load()): CourseSummary[] {
   const terms = fold(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
+  const folded = foldedIndex(data);
   const scored: Array<{ c: CourseSummary; score: number }> = [];
-  for (const c of data) {
-    const hay = fold(`${c.name} ${c.city} ${c.state}`);
+  for (let i = 0; i < data.length; i++) {
+    const { hay, name } = folded[i];
     if (!terms.every((t) => hay.includes(t))) continue;
-    const name = fold(c.name);
-    scored.push({ c, score: name.startsWith(terms[0]) ? 0 : 1 });
+    scored.push({ c: data[i], score: name.startsWith(terms[0]) ? 0 : 1 });
   }
   return scored
     .sort((a, b) => a.score - b.score || a.c.name.localeCompare(b.c.name))
