@@ -1,7 +1,9 @@
 // Web social sign-in: Supabase OAuth redirect flow. Same exports as socialSignIn.ts.
 import { getSupabase } from '@/lib/supabase';
 
-export const appleSignInAvailable = true;
+// Off until the Apple provider (Services ID + key) is configured in Supabase; web OAuth fails without it.
+// Guideline 4.8 only concerns the iOS app, which shows Apple via socialSignIn.ts.
+export const appleSignInAvailable = false;
 // Web uses Supabase's OAuth redirect; availability depends only on the Supabase provider setup.
 export const googleSignInAvailable = true;
 
