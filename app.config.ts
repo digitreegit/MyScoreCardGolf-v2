@@ -6,6 +6,11 @@ const IOS_BUNDLE_ID = 'com.skyface.myscorecard.ios';
 const ANDROID_PACKAGE = 'com.skyface.myscorecard.golf';
 
 // Reversed iOS OAuth client ID from Google Cloud, e.g. com.googleusercontent.apps.123-abc
+// One microphone description for every plugin that touches NSMicrophoneUsageDescription.
+// (expo-image-picker with microphonePermission: false deletes the key and blocks RECORD_AUDIO on
+// Android, which crashed voice entry on iOS.)
+const MICROPHONE_USAGE = 'Say your score (for example "hole 7 bogey, two putts") instead of typing it.';
+
 const googleIosUrlScheme = process.env.GOOGLE_IOS_URL_SCHEME ?? 'com.googleusercontent.apps.REPLACE_ME';
 
 const config: ExpoConfig = {
@@ -63,13 +68,13 @@ const config: ExpoConfig = {
       {
         cameraPermission: 'Take a photo of a paper scorecard to fill in your round automatically.',
         photosPermission: 'Choose a photo of a paper scorecard to fill in your round automatically.',
-        microphonePermission: false,
+        microphonePermission: MICROPHONE_USAGE,
       },
     ],
     [
       'expo-speech-recognition',
       {
-        microphonePermission: 'Say your score (for example "hole 7 bogey, two putts") instead of typing it.',
+        microphonePermission: MICROPHONE_USAGE,
         speechRecognitionPermission: 'Speech recognition turns what you say into hole scores.',
       },
     ],

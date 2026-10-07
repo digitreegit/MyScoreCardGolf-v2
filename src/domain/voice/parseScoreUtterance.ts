@@ -21,6 +21,19 @@ const EN_NUMBERS: Record<string, number> = {
 };
 
 const KO_NATIVE_COUNT: Record<string, number> = { 한: 1, 두: 2, 세: 3, 네: 4 };
+// Native Korean counts used for strokes ("다섯 개", "여섯 타").
+const KO_NATIVE_NUMBERS: Record<string, number> = {
+  하나: 1, 한: 1, 둘: 2, 두: 2, 셋: 3, 세: 3, 넷: 4, 네: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10,
+};
+const KO_SINO_DIGITS: Record<string, number> = { 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 칠: 7, 팔: 8, 구: 9 };
+
+/** "칠" → 7, "십이" → 12, "십팔" → 18 (Sino-Korean, used for hole numbers). */
+function sinoKorean(word: string): number | null {
+  const m = word.match(/^([일이삼사오육칠팔구])?(십)?([일이삼사오육칠팔구])?$/);
+  if (!m || (!m[1] && !m[2] && !m[3])) return null;
+  if (!m[2]) return m[3] ? null : KO_SINO_DIGITS[m[1]];
+  return (m[1] ? KO_SINO_DIGITS[m[1]] : 1) * 10 + (m[3] ? KO_SINO_DIGITS[m[3]] : 0);
+}
 const KO_KONGLISH_COUNT: Record<string, number> = { 원: 1, 투: 2, 쓰리: 3, 포: 4 };
 
 type TermRule = { re: RegExp; toPar?: number; strokes?: number; doublePar?: true };
@@ -31,12 +44,12 @@ const TERM_RULES: TermRule[] = [
   { re: /\bdouble par\b|양파/, doublePar: true },
   { re: /\b(albatross|double eagle)\b|알바트로스/, toPar: -3 },
   { re: /\beagle\b|이글/, toPar: -2 },
-  { re: /\bbirdie\b|버디/, toPar: -1 },
-  { re: /\b(quadruple|quad)( bogey)?\b|쿼드러플|쿼드/, toPar: 4 },
-  { re: /\btriple( bogey)?\b|트리플/, toPar: 3 },
-  { re: /\bdouble( bogey)?\b|더블/, toPar: 2 },
-  { re: /\bbogey\b|보기/, toPar: 1 },
-  { re: /\bpar\b|파/, toPar: 0 },
+  { re: /\bbird(?:ie|y)\b|버디/, toPar: -1 },
+  { re: /\b(quadruple|quad)( bog(?:ey|ie|y))?\b|쿼드러플|쿼드/, toPar: 4 },
+  { re: /\btriple( bog(?:ey|ie|y))?\b|트리플/, toPar: 3 },
+  { re: /\bdouble( bog(?:ey|ie|y))?\b|더블/, toPar: 2 },
+  { re: /\bbog(?:ey|ie|y)\b|보기/, toPar: 1 },
+  { re: /\bparr?\b|파/, toPar: 0 },
 ];
 
 function normalize(text: string): string {
@@ -44,6 +57,21 @@ function normalize(text: string): string {
   // Protect "hole in one" before number words are converted to digits.
   s = s.replace(/\bhole in (one|1)\b/g, ' __ace__ ').replace(/\bace\b/g, ' __ace__ ');
   s = s.replace(/\b[a-z]+\b/g, (w) => (w in EN_NUMBERS ? String(EN_NUMBERS[w]) : w));
+  // Recognizer mishearings seen in testing ("hole one par two putts" → "or one part two pets").
+  s = s.replace(/\bwhole\b/g, 'hole');
+  s = s.replace(/^ (?:or|all|hold|hall|whole|hold) (?=\d)/, ' hole ');
+  s = s.replace(/\bpart\b/g, 'par');
+  s = s.replace(/(\d) ?(?:pets?|puts?|pots?|putz|pats?|parts)\b/g, '$1 putts');
+  s = s.replace(/\bboogie\b/g, 'bogey').replace(/\bbertie\b/g, 'birdie');
+  // Korean: "이번 홀" means "this hole" (the selected one), not hole 2 — drop it before numerals.
+  // ("십이번 홀" is hole 12, so only a standalone 이번 counts.)
+  s = s.replace(/(^|[^일이삼사오육칠팔구십])이번 ?홀/g, '$1 ');
+  // Sino-Korean hole numbers ("칠번 홀", "십팔 번") and native stroke counts ("다섯 개").
+  s = s.replace(/([일이삼사오육칠팔구십]+) ?(?=번|홀)/g, (w, word: string) => {
+    const n = sinoKorean(word);
+    return n == null ? w : String(n);
+  });
+  s = s.replace(/(하나|한|둘|두|셋|세|넷|네|다섯|여섯|일곱|여덟|아홉|열) ?(개|타)/g, (_w, word: string) => `${KO_NATIVE_NUMBERS[word]}타`);
   return s;
 }
 
@@ -60,8 +88,9 @@ function parsePutts(s: string): { putts: number | null; rest: string } {
     [/\b(to|too) putt(s|ed)?\b/, () => 2],
     [/\b(\d) ?putt(s|ed)?\b/, (m) => Number(m[1])],
     [/(\d) ?(번 ?)?퍼트/, (m) => Number(m[1])],
-    [/(한|두|세|네) ?(번 ?)?퍼트/, (m) => KO_NATIVE_COUNT[m[1]]],
-    [/(원|투|쓰리|포) ?퍼트/, (m) => KO_KONGLISH_COUNT[m[1]]],
+    // The ko-KR recognizer sometimes mixes scripts: "파투 putt" for "파 투 퍼트".
+    [/(한|두|세|네) ?(번 ?)?(?:퍼트|putts?)/, (m) => KO_NATIVE_COUNT[m[1]]],
+    [/(원|투|쓰리|포) ?(?:퍼트|putts?)/, (m) => KO_KONGLISH_COUNT[m[1]]],
   ];
   for (const [re, value] of rules) {
     const { match, rest } = take(s, re);
@@ -71,7 +100,12 @@ function parsePutts(s: string): { putts: number | null; rest: string } {
 }
 
 function parseHole(s: string): { hole: number | null; rest: string } {
-  const rules = [/\bhole (?:number )?(\d{1,2})\b/, /\bnumber (\d{1,2})\b/, /(\d{1,2}) ?(?:번 ?홀|홀|번)/];
+  const rules = [
+    /\bhole (?:number )?(\d{1,2})\b/,
+    /\bnumber (\d{1,2})\b/,
+    /(\d{1,2}) ?(?:번 ?홀|홀|번)/,
+    /\b(?:on|at) (\d{1,2})\b/, // "birdie on 3", "made a five on 6"
+  ];
   for (const re of rules) {
     const { match, rest } = take(s, re);
     if (match) {
@@ -125,12 +159,12 @@ export function parseScoreUtterance(text: string): ParsedScore | null {
 
   if (strokes == null && toPar == null && !doublePar) {
     const explicit =
-      s.match(/\b(?:shot|made|got|scored|score|had|took|carded) (?:a )?(\d{1,2})\b/) ?? s.match(/(\d{1,2}) ?타/);
-    const bare = explicit ?? s.match(/\b(\d{1,2})\b/);
-    if (bare) {
-      const n = Number(bare[1]);
-      if (n >= 1 && n <= 15) strokes = n;
-    }
+      s.match(/\b(?:shot|made|got|scored|score|had|took|carded) (?:a )?(\d{1,2})\b/) ?? s.match(/(\d{1,2}) ?(?:타|개)/);
+    const bare = s.match(/\b(\d{1,2})\b/);
+    const n = explicit ? Number(explicit[1]) : bare ? Number(bare[1]) : NaN;
+    // A lone "1" is almost always a misheard word; a hole-in-one must be said as such ("ace").
+    const min = explicit ? 1 : 2;
+    if (n >= min && n <= 15) strokes = n;
   }
 
   if (h.hole == null && strokes == null && toPar == null && !doublePar && p.putts == null) return null;

@@ -62,3 +62,38 @@ describe('resolveStrokes', () => {
     expect(resolveStrokes({ hole: null, strokes: 6, toPar: 1, doublePar: false, putts: null }, 4)).toBe(6);
   });
 });
+
+describe('parseScoreUtterance (recognizer variants)', () => {
+  it.each([
+    ['Hole 7 bogie two putts', { hole: 7, toPar: 1, putts: 2 }],
+    ['whole 7 bogey', { hole: 7, toPar: 1 }],
+    ['birdy on 3', { hole: 3, toPar: -1, strokes: null }],
+    ['Hole 4 double bogie', { hole: 4, toPar: 2 }],
+    ['Hole 12, Parr, 2 putts', { hole: 12, toPar: 0, putts: 2 }],
+    ['I made a five on 6 with 2 putts', { hole: 6, strokes: 5, putts: 2 }],
+    ['three putt bogey on 14', { hole: 14, toPar: 1, putts: 3 }],
+    ['Hole ten 6', { hole: 10, strokes: 6 }],
+    // Heard in simulator testing for "Hole one par, two putts":
+    ['Or one part two pets', { hole: 1, toPar: 0, putts: 2, strokes: null }],
+    ['hold 3 boogie 2 puts', { hole: 3, toPar: 1, putts: 2 }],
+    ['All one part two parts', { hole: 1, toPar: 0, putts: 2 }],
+    ['one', null],
+  ])('%s', (text, expected) => {
+    if (expected === null) expect(parseScoreUtterance(text)?.strokes ?? null).toBeNull();
+    else expect(parseScoreUtterance(text)).toMatchObject(expected);
+  });
+
+  it.each([
+    ['칠번 홀 보기', { hole: 7, toPar: 1 }],
+    ['십이번 홀 파', { hole: 12, toPar: 0 }],
+    ['십팔 번 홀 보기', { hole: 18, toPar: 1 }],
+    ['2번 홀 다섯 개', { hole: 2, strokes: 5 }],
+    ['구번홀 여섯 타 투 퍼트', { hole: 9, strokes: 6, putts: 2 }],
+    ['9번홀 파 세이브 투 퍼트', { hole: 9, toPar: 0, putts: 2 }],
+    ['이번 홀 보기', { hole: null, toPar: 1 }],
+    // Heard in simulator testing for "5번 홀 파 투 퍼트":
+    ['오 번홀 파투 putt', { hole: 5, toPar: 0, putts: 2 }],
+  ])('%s', (text, expected) => {
+    expect(parseScoreUtterance(text)).toMatchObject(expected);
+  });
+});

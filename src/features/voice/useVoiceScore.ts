@@ -13,19 +13,31 @@ export function useVoiceScore(onParsed: (parsed: ParsedScore | null, transcript:
   const [state, setState] = useState<VoiceState>('idle');
   const [transcript, setTranscript] = useState('');
   const handled = useRef(false);
+  const lastText = useRef('');
   const callback = useRef(onParsed);
   callback.current = onParsed;
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';
+    lastText.current = text;
     setTranscript(text);
     if (event.isFinal && !handled.current) {
       handled.current = true;
       callback.current(parseScoreUtterance(text), text);
     }
   });
-  useSpeechRecognitionEvent('end', () => setState((s) => (s === 'listening' ? 'idle' : s)));
-  useSpeechRecognitionEvent('error', () => setState((s) => (s === 'listening' ? 'idle' : s)));
+  useSpeechRecognitionEvent('end', () => {
+    // Some recognizers stop without a final result; use the last interim transcript then.
+    if (!handled.current && lastText.current) {
+      handled.current = true;
+      callback.current(parseScoreUtterance(lastText.current), lastText.current);
+    }
+    setState((s) => (s === 'listening' ? 'idle' : s));
+  });
+  useSpeechRecognitionEvent('error', (event) => {
+    if (__DEV__) console.log('[voice] error', event.error, event.message);
+    setState((s) => (s === 'listening' ? 'idle' : s));
+  });
 
   const start = useCallback(async () => {
     if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
@@ -38,6 +50,7 @@ export function useVoiceScore(onParsed: (parsed: ParsedScore | null, transcript:
       return;
     }
     handled.current = false;
+    lastText.current = '';
     setTranscript('');
     setState('listening');
     ExpoSpeechRecognitionModule.start({

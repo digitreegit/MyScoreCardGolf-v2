@@ -85,6 +85,7 @@ export default function ScoreEntryScreen() {
 
   const onVoice = useCallback(
     async (parsed: ParsedScore | null, transcript: string) => {
+      if (__DEV__) console.log('[voice]', JSON.stringify(transcript), JSON.stringify(parsed));
       const target = parsed ? holes.find((h) => h.hole_number === (parsed.hole ?? sel.hole)) : undefined;
       if (!parsed || !target) {
         setVoiceMsg(t('score.voiceNotUnderstood'));
