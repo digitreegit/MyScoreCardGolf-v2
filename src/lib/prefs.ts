@@ -15,4 +15,5 @@ export const PREF_KEYS = {
   language: 'pref:language',
   guestChosen: 'pref:guestChosen',
   distanceUnit: 'pref:distanceUnit',
+  voiceAiAssist: 'pref:voiceAiAssist',
 } as const;

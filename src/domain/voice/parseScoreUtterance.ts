@@ -12,6 +12,8 @@ export interface ParsedScore {
   /** Korean "양파": double par. */
   doublePar: boolean;
   putts: number | null;
+  /** True when the result relied on correcting likely mishearings (part→par, pets→putts, or→hole…). */
+  guessed: boolean;
 }
 
 const EN_NUMBERS: Record<string, number> = {
@@ -52,17 +54,23 @@ const TERM_RULES: TermRule[] = [
   { re: /\bparr?\b|파/, toPar: 0 },
 ];
 
+let guessed = false; // set by normalize() for the utterance being parsed
+
 function normalize(text: string): string {
+  guessed = false;
   let s = ` ${text.toLowerCase().replace(/[-,.!?]/g, ' ').replace(/\s+/g, ' ').trim()} `;
   // Protect "hole in one" before number words are converted to digits.
   s = s.replace(/\bhole in (one|1)\b/g, ' __ace__ ').replace(/\bace\b/g, ' __ace__ ');
   s = s.replace(/\b[a-z]+\b/g, (w) => (w in EN_NUMBERS ? String(EN_NUMBERS[w]) : w));
   // Recognizer mishearings seen in testing ("hole one par two putts" → "or one part two pets").
+  // Each correction marks the result as guessed so the optional AI fallback can double-check it.
+  const before = s;
   s = s.replace(/\bwhole\b/g, 'hole');
-  s = s.replace(/^ (?:or|all|hold|hall|whole|hold) (?=\d)/, ' hole ');
+  s = s.replace(/^ (?:or|all|hold|hall) (?=\d)/, ' hole ');
   s = s.replace(/\bpart\b/g, 'par');
   s = s.replace(/(\d) ?(?:pets?|puts?|pots?|putz|pats?|parts)\b/g, '$1 putts');
   s = s.replace(/\bboogie\b/g, 'bogey').replace(/\bbertie\b/g, 'birdie');
+  guessed = s !== before;
   // Korean: "이번 홀" means "this hole" (the selected one), not hole 2 — drop it before numerals.
   // ("십이번 홀" is hole 12, so only a standalone 이번 counts.)
   s = s.replace(/(^|[^일이삼사오육칠팔구십])이번 ?홀/g, '$1 ');
@@ -168,7 +176,7 @@ export function parseScoreUtterance(text: string): ParsedScore | null {
   }
 
   if (h.hole == null && strokes == null && toPar == null && !doublePar && p.putts == null) return null;
-  return { hole: h.hole, strokes, toPar, doublePar, putts: p.putts };
+  return { hole: h.hole, strokes, toPar, doublePar, putts: p.putts, guessed };
 }
 
 /** Converts a parsed utterance into absolute strokes for a hole with the given par. */

@@ -75,7 +75,16 @@
     "voiceHeard": "Heard: “{{text}}”",
     "voiceNotUnderstood": "Didn't catch a score. Try “hole 7 bogey, two putts”.",
     "voicePermission": "Microphone and speech recognition access is needed for voice entry.",
-    "rotateHint": "Turn your phone sideways for the full card."
+    "rotateHint": "Turn your phone sideways for the full card.",
+    "voiceAiThinking": "Asking AI…",
+    "voiceAiHeard": "AI understood: “{{text}}”",
+    "voiceSavedHole": "Hole {{hole}}",
+    "voiceSavedStrokes": "{{count}} strokes",
+    "voiceSavedPutts": "{{count}} putts",
+    "voiceSaved": "Saved {{saved}} — heard “{{text}}”",
+    "voiceAiSaved": "AI saved {{saved}} — heard “{{text}}”",
+    "voiceSavedStrokes_one": "{{count}} stroke",
+    "voiceSavedPutts_one": "{{count}} putt"
   },
   "gps": {
     "title": "Hole {{hole}}",
@@ -127,7 +136,10 @@
     "syncOffline": "Offline — will sync when back online",
     "importExport": "Import / export spreadsheet",
     "scan": "Scan a scorecard",
-    "syncRetrying": "Sync failed — retrying automatically at {{time}}"
+    "syncRetrying": "Sync failed — retrying automatically at {{time}}",
+    "voiceAi": "AI voice assist",
+    "voiceAiNote": "When the app can't understand what you said, the recognized text (never audio) is sent to AI to interpret it. Requires sign-in.",
+    "voiceAiSignIn": "Sign in to use AI voice assist."
   },
   "io": {
     "title": "Spreadsheet",

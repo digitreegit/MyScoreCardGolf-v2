@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, Pressable, Switch } from 'react-native';
 
 import { countUnsynced } from '@/data/accountData';
 import { getSyncStatus, onSyncStatus, syncNow, type SyncStatus } from '@/data/sync/syncEngine';
 import type { DistanceUnit } from '@/domain/geo';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { isVoiceAiEnabled, setVoiceAiEnabled } from '@/features/voice/aiParse';
 import { LANGUAGES, setLanguage } from '@/i18n';
 import { prefs, PREF_KEYS } from '@/lib/prefs';
 import { Button, Card, Label, Screen, Segmented } from '@/ui/components';
@@ -34,6 +35,12 @@ export default function SettingsScreen() {
   useEffect(() => {
     void countUnsynced().then(setUnsynced);
   }, [sync]);
+
+  const [voiceAi, setVoiceAi] = useState(isVoiceAiEnabled);
+  const toggleVoiceAi = (on: boolean) => {
+    setVoiceAiEnabled(on);
+    setVoiceAi(on);
+  };
 
   const changeUnit = (u: DistanceUnit) => {
     prefs.set(PREF_KEYS.distanceUnit, u);
@@ -69,6 +76,21 @@ export default function SettingsScreen() {
           value={unit}
           onChange={changeUnit}
         />
+        {Platform.OS !== 'web' && (
+          <>
+            {/* The whole row toggles; a bare Switch is a small target on a golf course. */}
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: voiceAi && !!session, disabled: !session }}
+              disabled={!session}
+              onPress={() => toggleVoiceAi(!voiceAi)}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 }}>
+              <Label>{t('settings.voiceAi')}</Label>
+              <Switch value={voiceAi && !!session} disabled={!session} onValueChange={toggleVoiceAi} />
+            </Pressable>
+            <Label muted>{session ? t('settings.voiceAiNote') : t('settings.voiceAiSignIn')}</Label>
+          </>
+        )}
       </Card>
 
       <Card>

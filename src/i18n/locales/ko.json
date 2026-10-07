@@ -75,7 +75,14 @@
     "voiceHeard": "인식: “{{text}}”",
     "voiceNotUnderstood": "스코어를 알아듣지 못했어요. “7번홀 보기 2퍼트”처럼 말해보세요.",
     "voicePermission": "음성 입력을 쓰려면 마이크와 음성 인식 권한이 필요합니다.",
-    "rotateHint": "폰을 가로로 돌리면 전체 카드가 보여요."
+    "rotateHint": "폰을 가로로 돌리면 전체 카드가 보여요.",
+    "voiceAiThinking": "AI가 해석하는 중…",
+    "voiceAiHeard": "AI 해석: “{{text}}”",
+    "voiceSavedHole": "{{hole}}번 홀",
+    "voiceSavedStrokes": "{{count}}타",
+    "voiceSavedPutts": "{{count}}퍼트",
+    "voiceSaved": "{{saved}} 저장 — 인식: “{{text}}”",
+    "voiceAiSaved": "AI가 {{saved}} 저장 — 인식: “{{text}}”"
   },
   "gps": {
     "title": "{{hole}}번 홀",
@@ -127,7 +134,10 @@
     "syncOffline": "오프라인 — 연결되면 자동으로 동기화됩니다",
     "importExport": "엑셀 가져오기 / 내보내기",
     "scan": "스코어카드 스캔",
-    "syncRetrying": "동기화 실패 — {{time}}에 자동으로 다시 시도합니다"
+    "syncRetrying": "동기화 실패 — {{time}}에 자동으로 다시 시도합니다",
+    "voiceAi": "AI 음성 보조",
+    "voiceAiNote": "앱이 말을 알아듣지 못하면 인식된 글자(음성은 보내지 않음)를 AI가 다시 해석합니다. 로그인이 필요합니다.",
+    "voiceAiSignIn": "AI 음성 보조는 로그인 후 사용할 수 있어요."
   },
   "io": {
     "title": "스프레드시트",

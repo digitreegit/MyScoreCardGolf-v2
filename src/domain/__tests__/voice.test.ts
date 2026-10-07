@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
+import { sanitizeAiResult } from '../voice/aiResult';
 import { parseScoreUtterance, resolveStrokes } from '../voice/parseScoreUtterance';
 
 describe('parseScoreUtterance (English)', () => {
@@ -10,6 +11,7 @@ describe('parseScoreUtterance (English)', () => {
       toPar: 1,
       doublePar: false,
       putts: 2,
+      guessed: false,
     });
   });
 
@@ -57,15 +59,15 @@ describe('parseScoreUtterance (Korean)', () => {
 
 describe('resolveStrokes', () => {
   it('converts relative results using par', () => {
-    expect(resolveStrokes({ hole: null, strokes: null, toPar: -1, doublePar: false, putts: null }, 4)).toBe(3);
-    expect(resolveStrokes({ hole: null, strokes: null, toPar: null, doublePar: true, putts: null }, 5)).toBe(10);
-    expect(resolveStrokes({ hole: null, strokes: 6, toPar: 1, doublePar: false, putts: null }, 4)).toBe(6);
+    expect(resolveStrokes({ hole: null, strokes: null, toPar: -1, doublePar: false, putts: null, guessed: false }, 4)).toBe(3);
+    expect(resolveStrokes({ hole: null, strokes: null, toPar: null, doublePar: true, putts: null, guessed: false }, 5)).toBe(10);
+    expect(resolveStrokes({ hole: null, strokes: 6, toPar: 1, doublePar: false, putts: null, guessed: false }, 4)).toBe(6);
   });
 });
 
 describe('parseScoreUtterance (recognizer variants)', () => {
   it.each([
-    ['Hole 7 bogie two putts', { hole: 7, toPar: 1, putts: 2 }],
+    ['Hole 7 bogie two putts', { hole: 7, toPar: 1, putts: 2, guessed: false }],
     ['whole 7 bogey', { hole: 7, toPar: 1 }],
     ['birdy on 3', { hole: 3, toPar: -1, strokes: null }],
     ['Hole 4 double bogie', { hole: 4, toPar: 2 }],
@@ -74,7 +76,8 @@ describe('parseScoreUtterance (recognizer variants)', () => {
     ['three putt bogey on 14', { hole: 14, toPar: 1, putts: 3 }],
     ['Hole ten 6', { hole: 10, strokes: 6 }],
     // Heard in simulator testing for "Hole one par, two putts":
-    ['Or one part two pets', { hole: 1, toPar: 0, putts: 2, strokes: null }],
+    ['Or one part two pets', { hole: 1, toPar: 0, putts: 2, strokes: null, guessed: true }],
+    ['Play one part', { toPar: 0, guessed: true }],
     ['hold 3 boogie 2 puts', { hole: 3, toPar: 1, putts: 2 }],
     ['All one part two parts', { hole: 1, toPar: 0, putts: 2 }],
     ['one', null],
@@ -95,5 +98,21 @@ describe('parseScoreUtterance (recognizer variants)', () => {
     ['오 번홀 파투 putt', { hole: 5, toPar: 0, putts: 2 }],
   ])('%s', (text, expected) => {
     expect(parseScoreUtterance(text)).toMatchObject(expected);
+  });
+});
+
+describe('sanitizeAiResult', () => {
+  it('accepts a sensible answer', () => {
+    expect(sanitizeAiResult({ understood: true, hole: 3, strokes: 3, putts: 1 }, 18)).toEqual({ hole: 3, strokes: 3, putts: 1 });
+    expect(sanitizeAiResult({ understood: true, hole: null, strokes: null, putts: 2 }, 18)).toEqual({ hole: null, strokes: null, putts: 2 });
+  });
+
+  it('rejects not-understood, out-of-range and impossible answers', () => {
+    expect(sanitizeAiResult({ understood: false, hole: 3, strokes: 3, putts: 1 }, 18)).toBeNull();
+    expect(sanitizeAiResult({ understood: true, hole: 12, strokes: 4, putts: 2 }, 9)).toBeNull();
+    expect(sanitizeAiResult({ understood: true, hole: 1, strokes: 0, putts: null }, 18)).toBeNull();
+    expect(sanitizeAiResult({ understood: true, hole: 1, strokes: 3, putts: 4 }, 18)).toBeNull();
+    expect(sanitizeAiResult({ understood: true, hole: 1, strokes: 4.5, putts: null }, 18)).toBeNull();
+    expect(sanitizeAiResult('nope', 18)).toBeNull();
   });
 });

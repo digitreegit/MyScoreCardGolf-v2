@@ -14,6 +14,8 @@ import { roundTotals, sumRange } from '@/domain/stats';
 import type { RoundHole } from '@/domain/types';
 import type { ParsedScore } from '@/domain/voice/parseScoreUtterance';
 import { resolveStrokes } from '@/domain/voice/parseScoreUtterance';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { isVoiceAiEnabled, parseVoiceWithAI } from '@/features/voice/aiParse';
 import { useVoiceScore } from '@/features/voice/useVoiceScore';
 import { Loading } from '@/ui/components';
 import { radius, scoreColor, spacing, useColors, type Colors } from '@/ui/theme';
@@ -83,27 +85,63 @@ export default function ScoreEntryScreen() {
     [holes.length],
   );
 
+  const { userId } = useAuth();
+
   const onVoice = useCallback(
     async (parsed: ParsedScore | null, transcript: string) => {
       if (__DEV__) console.log('[voice]', JSON.stringify(transcript), JSON.stringify(parsed));
-      const target = parsed ? holes.find((h) => h.hole_number === (parsed.hole ?? sel.hole)) : undefined;
-      if (!parsed || !target) {
-        setVoiceMsg(t('score.voiceNotUnderstood'));
-        return;
-      }
-      const strokes = resolveStrokes(parsed, target.par);
+      // 1) On-device rule parser (free, offline).
+      let holeNumber = parsed?.hole ?? sel.hole;
+      let target = holes.find((h) => h.hole_number === holeNumber);
       const patch: Partial<RoundHole> = {};
-      if (strokes != null) patch.strokes = strokes;
-      if (parsed.putts != null) patch.putts = parsed.putts;
-      if (!Object.keys(patch).length) {
+      if (parsed && target) {
+        const strokes = resolveStrokes(parsed, target.par);
+        if (strokes != null) patch.strokes = strokes;
+        if (parsed.putts != null) patch.putts = parsed.putts;
+      }
+
+      // 2) Optional AI fallback when the rule parser found no score or putts, or only got there by
+      //    correcting likely mishearings ("play one part" → par). A guessed result is not applied
+      //    if the AI can't confirm it.
+      let viaAi = false;
+      const aiOn = !!transcript && !!userId && isVoiceAiEnabled();
+      if (aiOn && parsed?.guessed) {
+        for (const k of Object.keys(patch) as Array<keyof RoundHole>) delete patch[k];
+      }
+      if (!Object.keys(patch).length && aiOn) {
+        setVoiceMsg(t('score.voiceAiThinking'));
+        const ai = await parseVoiceWithAI(
+          transcript,
+          holes.map((h) => ({ hole_number: h.hole_number, par: h.par })),
+          sel.hole,
+        );
+        if (__DEV__) console.log('[voice] ai', JSON.stringify(ai));
+        if (ai) {
+          holeNumber = ai.hole ?? sel.hole;
+          target = holes.find((h) => h.hole_number === holeNumber);
+          if (ai.strokes != null) patch.strokes = ai.strokes;
+          if (ai.putts != null) patch.putts = ai.putts;
+          viaAi = true;
+        }
+      }
+
+      if (!target || !Object.keys(patch).length) {
         setVoiceMsg(t('score.voiceNotUnderstood'));
         return;
       }
       await updateHole(target, patch);
-      setVoiceMsg(t('score.voiceHeard', { text: transcript }));
+      // Show what was actually saved, so a misheard score is easy to spot and fix.
+      const saved = [
+        t('score.voiceSavedHole', { hole: target.hole_number }),
+        patch.strokes != null ? t('score.voiceSavedStrokes', { count: patch.strokes }) : null,
+        patch.putts != null ? t('score.voiceSavedPutts', { count: patch.putts }) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      setVoiceMsg(t(viaAi ? 'score.voiceAiSaved' : 'score.voiceSaved', { saved, text: transcript }));
       if (target.hole_number < holes.length) setSel({ hole: target.hole_number + 1, field: 'strokes' });
     },
-    [holes, sel.hole, t],
+    [holes, sel.hole, t, userId],
   );
 
   const voice = useVoiceScore((p, text) => void onVoice(p, text));
