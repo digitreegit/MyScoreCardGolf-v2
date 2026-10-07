@@ -1,56 +1,65 @@
-# Welcome to your Expo app 👋
+# MyScoreCard Golf v2
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Golf scorecard for iOS, Android and web — accounts and cloud sync (Supabase), landscape score entry,
+on-device GPS distances, scorecard photo scan, voice entry, and spreadsheet import/export.
 
-## Get started
+Architecture and project rules: see [CLAUDE.md](CLAUDE.md).
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run locally
 
 ```bash
-npm run reset-project
+npm install
+cp .env.example .env   # optional — without it the app runs in guest/local-only mode
+npx expo run:ios       # or: npx expo run:android  (development build; Expo Go lacks the native modules)
+npm run web            # web app (requires Supabase config to sign in)
+npm test               # unit tests (domain logic)
+npm run typecheck
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Supabase setup
 
-### Other setup steps
+1. Create a project at supabase.com, then link and push the schema:
+   ```bash
+   npx supabase login
+   npx supabase init            # creates supabase/config.toml (keeps existing migrations/functions)
+   npx supabase link --project-ref <ref>
+   npx supabase db push
+   ```
+2. Deploy edge functions and set secrets:
+   ```bash
+   npx supabase functions deploy delete-account
+   npx supabase functions deploy scan-scorecard
+   npx supabase secrets set ANTHROPIC_API_KEY=... SCAN_MONTHLY_LIMIT=10
+   ```
+   `SCAN_MODEL` defaults to `claude-opus-5-5`; set it to trade quality for cost after testing on real cards.
+3. Put the project URL and publishable key in `.env` (and in Vercel / EAS environment variables).
+4. Auth → Email: enable confirmations; set a custom SMTP sender (e.g. Resend) — the built-in sender is rate-limited.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+### Auth providers
 
-## Learn more
+- **Google**: Google Cloud console → create OAuth client IDs for *Web*, *iOS* (bundle `com.skyface.myscorecard.ios`)
+  and *Android* (package `com.skyface.myscorecard.golf` + SHA-1 of the EAS signing key).
+  Supabase → Auth → Providers → Google: add the web client ID and secret, and add the iOS/Android client IDs to
+  *Authorized Client IDs*. Enable *Skip nonce check* (the native Google SDK does not send a nonce).
+- **Apple** (iOS app + web): enable *Sign in with Apple* on the App ID; Supabase → Providers → Apple: add the
+  bundle ID (native) and a Services ID + key (web OAuth).
+- Supabase → Auth → URL configuration: add the Vercel domain and `http://localhost:8081` as redirect URLs.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Web deploy (Vercel)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Import the GitHub repo in Vercel; `vercel.json` already sets the build (`expo export --platform web`), output
+(`dist`) and SPA rewrites. Add the `EXPO_PUBLIC_*` variables in the Vercel project settings.
 
-## Join the community
+## Course data
 
-Join our community of developers creating universal apps.
+- `assets/courses/us-index.json` — on-device course list for search / nearby. Currently 5 sample courses.
+  Rebuild from OpenStreetMap: `npm run build:course-index`.
+- Hole geometry (par, green front/center/back) lives in Supabase `courses` / `course_holes` (public read).
+  An importer is still to be written; GPS shows "no data" until a course has rows there.
+- OpenStreetMap data is © OpenStreetMap contributors under ODbL — attribution is shown in Settings.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Migrating v1 users
+
+v2 keeps v1's bundle IDs, so v1's AsyncStorage data is still on the device after the store update.
+On first launch `src/data/v1Import.ts` converts it into the local database (v1 keys are kept as a backup).
+Signing in later uploads those rounds to the account.
