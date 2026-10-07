@@ -4,13 +4,20 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, Text, View } from 'react-native';
 
 import { saveRounds } from '@/data/repository';
-import { scanToRound, type ScanResult } from '@/domain/scanResult';
+import { scannedHoles, scanToRound, type ScanResult } from '@/domain/scanResult';
 import { nowIso } from '@/domain/types';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { pickScorecardImage, scanScorecard } from '@/features/scan/scanScorecard';
 import { newId } from '@/lib/id';
 import { Button, Card, Label, Screen } from '@/ui/components';
 import { radius, spacing, useColors } from '@/ui/theme';
+
+/** Strokes per hole and total, even when the card was written relative to par. */
+function previewLine(scan: ScanResult, index: number): string {
+  const holes = scannedHoles(scan, index);
+  const total = holes.reduce((sum, h) => sum + (h.strokes ?? 0), 0);
+  return `${holes.map((h) => h.strokes ?? '·').join(' ')}  =  ${total}`;
+}
 
 export default function ScanScreen() {
   const { t } = useTranslation();
@@ -35,6 +42,7 @@ export default function ScanScreen() {
     setResult(null);
     try {
       const res = await scanScorecard(picked);
+      if (__DEV__) console.log('[scan]', JSON.stringify(res));
       if ('error' in res) {
         Alert.alert(res.error === 'quota_exceeded' ? t('scan.quotaExceeded') : t('scan.failed'));
         return;
@@ -81,7 +89,7 @@ export default function ScanScreen() {
               <Text style={{ color: c.text, fontWeight: '600' }}>{p.name || t('scan.player', { n: i + 1 })}</Text>
               <View>
                 <Text style={{ color: c.textMuted, fontVariant: ['tabular-nums'] }}>
-                  {p.scores.map((s) => (s == null ? '·' : s)).join(' ')}
+                  {previewLine(result, i)}
                 </Text>
               </View>
             </Pressable>

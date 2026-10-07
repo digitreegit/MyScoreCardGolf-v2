@@ -31,7 +31,8 @@ npm run typecheck
    npx supabase functions deploy scan-scorecard
    npx supabase secrets set ANTHROPIC_API_KEY=... SCAN_MONTHLY_LIMIT=10
    ```
-   `SCAN_MODEL` defaults to `claude-opus-5-5`; set it to trade quality for cost after testing on real cards.
+   `SCAN_MODEL` defaults to `claude-haiku-5-5` (matched Opus 5.5 accuracy on test cards at ~1/40 the cost);
+   set it to a larger model if real photos need it.
 3. Put the project URL and publishable key in `.env` (and in Vercel / EAS environment variables).
 4. Auth → Email: enable confirmations; set a custom SMTP sender (e.g. Resend) — the built-in sender is rate-limited.
 

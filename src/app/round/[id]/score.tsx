@@ -2,7 +2,7 @@
 // Entering strokes jumps to that hole's putts; entering putts jumps to the next hole.
 
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -34,14 +34,26 @@ export default function ScoreEntryScreen() {
   const [sel, setSel] = useState<Selection>({ hole: 1, field: 'strokes' });
   const [voiceMsg, setVoiceMsg] = useState<string | null>(null);
 
+  // Rotate only after the push/replace animation finishes: rotating mid-transition froze the
+  // screen on iOS (seen when opening a scanned round). The timer covers entries with no transition.
+  const navigation = useNavigation();
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS === 'web') return;
-      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      let locked = false;
+      const lockLandscape = () => {
+        if (locked) return;
+        locked = true;
+        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      };
+      const unsubscribe = navigation.addListener('transitionEnd' as never, lockLandscape);
+      const fallback = setTimeout(lockLandscape, 700);
       return () => {
+        unsubscribe();
+        clearTimeout(fallback);
         void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       };
-    }, []),
+    }, [navigation]),
   );
 
   // Taps update the card instantly; writes are queued behind (repository serializes them).

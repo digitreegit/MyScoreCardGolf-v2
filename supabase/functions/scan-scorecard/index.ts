@@ -3,14 +3,19 @@
 //
 // Secrets (supabase secrets set ...):
 //   ANTHROPIC_API_KEY   required
-//   SCAN_MODEL          optional, defaults to claude-opus-5-5
+//   SCAN_MODEL          optional, defaults to claude-haiku-5-5
 //   SCAN_MONTHLY_LIMIT  optional, free scans per user per month (default 10)
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.131.0';
 
 import { corsHeaders, json, userClient } from '../_shared/http.ts';
 
-const MODEL = Deno.env.get('SCAN_MODEL') ?? 'claude-opus-5-5';
+// Haiku 5.5 read the test cards (US strokes + Korean to-par) as accurately as Opus 5.5 at ~1/40 the
+// cost (~$0.0005 vs ~$0.02 per scan). Raise via SCAN_MODEL if real-world photos need more capability.
+const MODEL = Deno.env.get('SCAN_MODEL') ?? 'claude-haiku-5-5';
+// Server-side refusal fallbacks are documented for these models only; other models (e.g. Haiku)
+// are called without the parameter so the request isn't rejected.
+const FALLBACK_MODELS = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 const MONTHLY_LIMIT = Number(Deno.env.get('SCAN_MONTHLY_LIMIT') ?? '10');
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
@@ -90,8 +95,7 @@ Deno.serve(async (req) => {
       model: MODEL,
       max_tokens: 16000,
       // On a safety-classifier decline the API retries on Anthropic's recommended fallback model.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
+      ...(FALLBACK_MODELS.has(MODEL) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
       output_config: {
         effort: 'medium',
         format: { type: 'json_schema', schema: SCAN_SCHEMA },
@@ -112,7 +116,7 @@ Deno.serve(async (req) => {
 
     const text = response.content.find((b) => b.type === 'text');
     if (!text || text.type !== 'text') return json({ error: 'empty_response' }, 502);
-    return json({ result: JSON.parse(text.text), remaining });
+    return json({ result: JSON.parse(text.text), remaining, model: response.model, usage: response.usage });
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) return json({ error: 'busy' }, 503);
     if (err instanceof Anthropic.APIError) return json({ error: 'model_error', status: err.status }, 502);
