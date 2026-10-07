@@ -3,7 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Platform, Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
-import { appleSignInAvailable, signInWithApple, signInWithGoogle } from '@/features/auth/socialSignIn';
+import {
+  appleSignInAvailable,
+  googleSignInAvailable,
+  signInWithApple,
+  signInWithGoogle,
+} from '@/features/auth/socialSignIn';
 import { isBackendConfigured } from '@/lib/env';
 import { Button, Card, Field, Label, Screen, Title } from '@/ui/components';
 import { spacing, useColors } from '@/ui/theme';
@@ -49,7 +54,9 @@ export default function SignInScreen() {
           {appleSignInAvailable && (
             <Button title={t('auth.apple')} variant="secondary" loading={busy === 'apple'} onPress={() => run('apple', signInWithApple)} />
           )}
-          <Button title={t('auth.google')} variant="secondary" loading={busy === 'google'} onPress={() => run('google', signInWithGoogle)} />
+          {googleSignInAvailable && (
+            <Button title={t('auth.google')} variant="secondary" loading={busy === 'google'} onPress={() => run('google', signInWithGoogle)} />
+          )}
 
           <Text style={{ color: c.textMuted, textAlign: 'center', marginVertical: spacing.sm }}>{t('auth.or')}</Text>
 

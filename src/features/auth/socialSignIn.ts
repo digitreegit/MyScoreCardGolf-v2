@@ -18,20 +18,31 @@ let googleConfigured = false;
 /** Apple sign-in is offered on iOS only (App Store guideline 4.8 applies to the iOS app). */
 export const appleSignInAvailable = Platform.OS === 'ios';
 
+/** Hidden until the OAuth client IDs are in .env — the native SDK throws without them. */
+export const googleSignInAvailable =
+  Boolean(env.googleWebClientId) && (Platform.OS !== 'ios' || Boolean(env.googleIosClientId));
+
 /** Returns false when the user cancelled. */
 export async function signInWithGoogle(): Promise<boolean> {
   if (!googleConfigured) {
-    GoogleSignin.configure({ webClientId: env.googleWebClientId, iosClientId: env.googleIosClientId || undefined });
+    GoogleSignin.configure({ webClientId: env.googleWebClientId, iosClientId: env.googleIosClientId });
     googleConfigured = true;
   }
   try {
     await GoogleSignin.hasPlayServices();
     const res = await GoogleSignin.signIn();
-    if (!isSuccessResponse(res)) return false;
+    if (!isSuccessResponse(res)) {
+      if (__DEV__) console.log('[auth] Google sign-in not completed:', res.type);
+      return false;
+    }
     const token = res.data.idToken;
     if (!token) throw new Error('Google did not return an ID token');
     const { error } = await getSupabase().auth.signInWithIdToken({ provider: 'google', token });
-    if (error) throw error;
+    if (error) {
+      if (__DEV__) console.log('[auth] Supabase rejected Google token:', error.message);
+      throw error;
+    }
+    if (__DEV__) console.log('[auth] Google sign-in OK');
     return true;
   } catch (err) {
     if (isErrorWithCode(err) && err.code === statusCodes.IN_PROGRESS) return false;

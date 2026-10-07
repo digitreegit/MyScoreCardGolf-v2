@@ -2,6 +2,8 @@
 import { getSupabase } from '@/lib/supabase';
 
 export const appleSignInAvailable = true;
+// Web uses Supabase's OAuth redirect; availability depends only on the Supabase provider setup.
+export const googleSignInAvailable = true;
 
 async function oauth(provider: 'google' | 'apple'): Promise<boolean> {
   const { error } = await getSupabase().auth.signInWithOAuth({
