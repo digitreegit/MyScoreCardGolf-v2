@@ -82,7 +82,10 @@
     "voiceSavedStrokes": "{{count}}타",
     "voiceSavedPutts": "{{count}}퍼트",
     "voiceSaved": "{{saved}} 저장 — 인식: “{{text}}”",
-    "voiceAiSaved": "AI가 {{saved}} 저장 — 인식: “{{text}}”"
+    "voiceAiSaved": "AI가 {{saved}} 저장 — 인식: “{{text}}”",
+    "switchToLandscape": "가로 스코어카드로 전환",
+    "switchToPortrait": "세로 스코어카드로 전환",
+    "puttsShort": "퍼트"
   },
   "gps": {
     "title": "{{hole}}번 홀",

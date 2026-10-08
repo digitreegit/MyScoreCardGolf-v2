@@ -1,10 +1,13 @@
-// Landscape score entry (18Birdies-style): full card on screen, tap a cell, tap a number.
+// Score entry in two layouts, switched with the rotate icon (choice is remembered per device):
+//   portrait (default): 6-column hole tiles on top, number pad at the bottom
+//   landscape: the full paper-style card with the pad on the right (18Birdies-style)
 // Entering strokes jumps to that hole's putts; entering putts jumps to the next hole.
 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SymbolView } from 'expo-symbols';
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,10 +20,17 @@ import { resolveStrokes } from '@/domain/voice/parseScoreUtterance';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { isVoiceAiEnabled, parseVoiceWithAI } from '@/features/voice/aiParse';
 import { useVoiceScore } from '@/features/voice/useVoiceScore';
+import { prefs, PREF_KEYS } from '@/lib/prefs';
 import { Loading } from '@/ui/components';
 import { radius, scoreColor, spacing, useColors, type Colors } from '@/ui/theme';
 
 type Field = 'strokes' | 'putts';
+type Layout = 'portrait' | 'landscape';
+
+const lockFor = (layout: Layout) =>
+  ScreenOrientation.lockAsync(
+    layout === 'landscape' ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+  );
 interface Selection {
   hole: number;
   field: Field;
@@ -35,6 +45,11 @@ export default function ScoreEntryScreen() {
   const wide = width > height;
   const [sel, setSel] = useState<Selection>({ hole: 1, field: 'strokes' });
   const [voiceMsg, setVoiceMsg] = useState<string | null>(null);
+  const [layout, setLayout] = useState<Layout>(() =>
+    prefs.get(PREF_KEYS.scoreLayout) === 'landscape' ? 'landscape' : 'portrait',
+  );
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
   // Rotate only after the push/replace animation finishes: rotating mid-transition froze the
   // screen on iOS (seen when opening a scanned round). The timer covers entries with no transition.
@@ -43,20 +58,27 @@ export default function ScoreEntryScreen() {
     useCallback(() => {
       if (Platform.OS === 'web') return;
       let locked = false;
-      const lockLandscape = () => {
+      const lock = () => {
         if (locked) return;
         locked = true;
-        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        void lockFor(layoutRef.current);
       };
-      const unsubscribe = navigation.addListener('transitionEnd' as never, lockLandscape);
-      const fallback = setTimeout(lockLandscape, 700);
+      const unsubscribe = navigation.addListener('transitionEnd' as never, lock);
+      const fallback = setTimeout(lock, 700);
       return () => {
         unsubscribe();
         clearTimeout(fallback);
-        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        void lockFor('portrait'); // the rest of the app is portrait
       };
     }, [navigation]),
   );
+
+  const toggleLayout = () => {
+    const next: Layout = layout === 'portrait' ? 'landscape' : 'portrait';
+    prefs.set(PREF_KEYS.scoreLayout, next);
+    setLayout(next);
+    if (Platform.OS !== 'web') void lockFor(next); // no navigation transition here, rotate right away
+  };
 
   // Taps update the card instantly; writes are queued behind (repository serializes them).
   const [pending, setPending] = useState<Record<string, number | null>>({});
@@ -167,13 +189,31 @@ export default function ScoreEntryScreen() {
         </Text>
         {Platform.OS !== 'web' && (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('score.voice')}
             onPress={() => (voice.state === 'listening' ? voice.stop() : void voice.start())}
             style={[styles.mic, { backgroundColor: voice.state === 'listening' ? c.danger : c.primary }]}>
             <Text style={{ color: c.primaryText, fontWeight: '700' }}>
-              {voice.state === 'listening' ? t('score.listening') : `🎙 ${t('score.voice')}`}
+              {voice.state === 'listening'
+                ? t('score.listening')
+                : layout === 'landscape'
+                  ? `🎙 ${t('score.voice')}`
+                  : '🎙'}
             </Text>
           </Pressable>
         )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={layout === 'portrait' ? t('score.switchToLandscape') : t('score.switchToPortrait')}
+          onPress={toggleLayout}
+          hitSlop={8}
+          style={[styles.rotate, { borderColor: c.border, backgroundColor: c.surface }]}>
+          <SymbolView
+            name={{ ios: 'rectangle.portrait.rotate', android: 'screen_rotation', web: 'screen_rotation' }}
+            tintColor={c.text}
+            size={22}
+          />
+        </Pressable>
       </View>
       {(voice.state === 'listening' || voiceMsg || voice.state === 'denied') && (
         <Text style={[styles.voiceLine, { color: c.textMuted }]} numberOfLines={1}>
@@ -185,36 +225,134 @@ export default function ScoreEntryScreen() {
         </Text>
       )}
 
-      <View style={[styles.flex, { flexDirection: wide ? 'row' : 'column', gap: spacing.md, padding: spacing.sm }]}>
-        <View style={[styles.flex, { gap: spacing.sm }]}>
-          {nines.map((start) => (
-            <NineGrid
-              key={start}
-              c={c}
-              holes={holes.filter((h) => h.hole_number >= start && h.hole_number < start + 9)}
-              subtotalLabel={start === 1 ? t('score.out') : t('score.in')}
-              grandTotal={start === 10 || holes.length === 9 ? totals : null}
-              coursePar={holes.reduce((sum, h) => sum + h.par, 0)}
-              labels={{ hole: t('score.hole'), par: t('score.par'), score: t('score.score'), putts: t('score.putts'), total: t('score.total') }}
-              sel={sel}
-              onSelect={setSel}
-            />
-          ))}
-          {!wide && <Text style={{ color: c.textMuted, textAlign: 'center' }}>{t('score.rotateHint')}</Text>}
+      {layout === 'portrait' ? (
+        <View style={[styles.flex, { gap: spacing.sm, padding: spacing.sm }]}>
+          <HoleTiles c={c} holes={holes} sel={sel} onSelect={setSel} />
+          <TotalsLine c={c} holes={holes} totals={totals} />
+          {selectedHole && (
+            <View style={styles.bottomPad}>
+              <InputPad
+                c={c}
+                wide={false}
+                hole={selectedHole}
+                field={sel.field}
+                labels={{ hole: t('score.hole'), score: t('score.score'), putts: t('score.putts') }}
+                onPick={(v) => setValue(selectedHole, sel.field, v)}
+                onField={(f) => setSel({ hole: sel.hole, field: f })}
+              />
+            </View>
+          )}
         </View>
-        {selectedHole && (
-          <InputPad
-            c={c}
-            wide={wide}
-            hole={selectedHole}
-            field={sel.field}
-            labels={{ hole: t('score.hole'), score: t('score.score'), putts: t('score.putts') }}
-            onPick={(v) => setValue(selectedHole, sel.field, v)}
-            onField={(f) => setSel({ hole: sel.hole, field: f })}
-          />
-        )}
-      </View>
+      ) : (
+        <View style={[styles.flex, { flexDirection: wide ? 'row' : 'column', gap: spacing.md, padding: spacing.sm }]}>
+          <View style={[styles.flex, { gap: spacing.sm }]}>
+            {nines.map((start) => (
+              <NineGrid
+                key={start}
+                c={c}
+                holes={holes.filter((h) => h.hole_number >= start && h.hole_number < start + 9)}
+                subtotalLabel={start === 1 ? t('score.out') : t('score.in')}
+                grandTotal={start === 10 || holes.length === 9 ? totals : null}
+                coursePar={holes.reduce((sum, h) => sum + h.par, 0)}
+                labels={{ hole: t('score.hole'), par: t('score.par'), score: t('score.score'), putts: t('score.putts'), total: t('score.total') }}
+                sel={sel}
+                onSelect={setSel}
+              />
+            ))}
+          </View>
+          {selectedHole && (
+            <InputPad
+              c={c}
+              wide={wide}
+              hole={selectedHole}
+              field={sel.field}
+              labels={{ hole: t('score.hole'), score: t('score.score'), putts: t('score.putts') }}
+              onPick={(v) => setValue(selectedHole, sel.field, v)}
+              onField={(f) => setSel({ hole: sel.hole, field: f })}
+            />
+          )}
+        </View>
+      )}
     </SafeAreaView>
+  );
+}
+
+const TILE_COLUMNS = 6;
+
+/** Portrait: one tile per hole, 6 per row (18 holes → 3 rows, 9 holes → 2 rows). */
+function HoleTiles({
+  c,
+  holes,
+  sel,
+  onSelect,
+}: {
+  c: Colors;
+  holes: RoundHole[];
+  sel: Selection;
+  onSelect: (s: Selection) => void;
+}) {
+  const { t } = useTranslation();
+  const rows: RoundHole[][] = [];
+  for (let i = 0; i < holes.length; i += TILE_COLUMNS) rows.push(holes.slice(i, i + TILE_COLUMNS));
+  return (
+    <View style={{ gap: spacing.xs }}>
+      {rows.map((row, r) => (
+        <View key={r} style={{ flexDirection: 'row', gap: spacing.xs }}>
+          {row.map((h) => {
+            const selected = sel.hole === h.hole_number;
+            return (
+              <Pressable
+                key={h.hole_number}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('score.hole')} ${h.hole_number}`}
+                onPress={() => onSelect({ hole: h.hole_number, field: 'strokes' })}
+                style={[
+                  styles.tile,
+                  {
+                    backgroundColor: selected ? c.selected : c.surface,
+                    borderColor: selected ? c.primary : c.border,
+                    borderWidth: selected ? 2 : StyleSheet.hairlineWidth,
+                  },
+                ]}>
+                <View style={styles.tileHeader}>
+                  <Text style={[styles.tileHole, { color: c.text }]}>{h.hole_number}</Text>
+                  <Text style={[styles.tilePar, { color: c.textMuted }]}>P{h.par}</Text>
+                </View>
+                <Text style={[styles.tileScore, { color: scoreColor(c, h.strokes, h.par) }]}>{h.strokes ?? '–'}</Text>
+                <Text
+                  style={[
+                    styles.tilePutts,
+                    { color: selected && sel.field === 'putts' ? c.primary : c.textMuted },
+                  ]}>
+                  {h.putts != null ? `${h.putts}${t('score.puttsShort')}` : ' '}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {/* keep tile widths equal on a short last row */}
+          {Array.from({ length: TILE_COLUMNS - row.length }, (_, i) => (
+            <View key={`pad${i}`} style={[styles.tile, { borderWidth: 0 }]} />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Portrait: Out / In / Total / Putts in one line under the tiles. */
+function TotalsLine({ c, holes, totals }: { c: Colors; holes: RoundHole[]; totals: ReturnType<typeof roundTotals> }) {
+  const { t } = useTranslation();
+  const toPar = (n: number) => (n === 0 ? 'E' : n > 0 ? `+${n}` : String(n));
+  const parts = [
+    `${t('score.out')} ${sumRange(holes, 1, 9, 'strokes') ?? '–'}`,
+    holes.length > 9 ? `${t('score.in')} ${sumRange(holes, 10, 18, 'strokes') ?? '–'}` : null,
+    `${t('score.total')} ${totals.holesPlayed ? `${totals.strokes} (${toPar(totals.toPar)})` : '–'}`,
+    `${t('score.putts')} ${totals.putts ?? '–'}`,
+  ].filter(Boolean);
+  return (
+    <Text style={[styles.totalsLine, { color: c.textMuted }]} numberOfLines={1}>
+      {parts.join('  ·  ')}
+    </Text>
   );
 }
 
@@ -344,7 +482,9 @@ function InputPad({
           </Pressable>
         ))}
       </View>
-      <View style={styles.padGrid}>
+      {/* Same height for the strokes (3 rows) and putts (2 rows) pads, so the tabs and keys
+          don't move under the thumb when the pad switches after a stroke entry. */}
+      <View style={[styles.padGrid, { minHeight: (wide ? 46 : 60) * 3 + spacing.xs * 2 }]}>
         {values.map((v) => {
           const term = field === 'strokes' ? TERM_KEYS[v - hole.par] : undefined;
           const active = current === v;
@@ -354,6 +494,7 @@ function InputPad({
               onPress={() => onPick(v)}
               style={({ pressed }) => [
                 styles.padKey,
+                !wide && styles.padKeyLarge,
                 {
                   backgroundColor: active ? c.primary : v === hole.par && field === 'strokes' ? c.surfaceAlt : c.bg,
                   borderColor: c.border,
@@ -367,7 +508,7 @@ function InputPad({
             </Pressable>
           );
         })}
-        <Pressable onPress={() => onPick(null)} style={[styles.padKey, { borderColor: c.border, backgroundColor: c.bg }]}>
+        <Pressable onPress={() => onPick(null)} style={[styles.padKey, !wide && styles.padKeyLarge, { borderColor: c.border, backgroundColor: c.bg }]}>
           <Text style={{ color: c.danger, fontWeight: '600' }}>⌫</Text>
         </Pressable>
       </View>
@@ -382,6 +523,22 @@ const styles = StyleSheet.create({
   course: { flex: 1, fontSize: 17, fontWeight: '700' },
   total: { fontSize: 17, fontWeight: '700', fontVariant: ['tabular-nums'] },
   mic: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
+  rotate: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomPad: { marginTop: 'auto' },
+  tile: { flex: 1, minHeight: 74, borderRadius: radius.sm, padding: 4, justifyContent: 'space-between' },
+  tileHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  tileHole: { fontSize: 13, fontWeight: '700' },
+  tilePar: { fontSize: 11 },
+  tileScore: { fontSize: 24, fontWeight: '800', textAlign: 'center', fontVariant: ['tabular-nums'] },
+  tilePutts: { fontSize: 11, textAlign: 'center' },
+  totalsLine: { fontSize: 13, textAlign: 'center', fontVariant: ['tabular-nums'] },
   voiceLine: { paddingHorizontal: spacing.md, fontSize: 13 },
   grid: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm, overflow: 'hidden' },
   gridRow: { flexDirection: 'row' },
@@ -391,7 +548,8 @@ const styles = StyleSheet.create({
   labelText: { fontSize: 13 },
   pad: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: spacing.sm, gap: spacing.sm },
   padTab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm, alignItems: 'center' },
-  padGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  padGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, alignContent: 'flex-start' },
+  padKeyLarge: { minHeight: 60 }, // portrait: bigger targets (gloves, sunlight)
   padKey: {
     width: '18.4%',
     minHeight: 46,

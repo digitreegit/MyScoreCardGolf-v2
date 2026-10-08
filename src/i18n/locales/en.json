@@ -84,7 +84,10 @@
     "voiceSaved": "Saved {{saved}} — heard “{{text}}”",
     "voiceAiSaved": "AI saved {{saved}} — heard “{{text}}”",
     "voiceSavedStrokes_one": "{{count}} stroke",
-    "voiceSavedPutts_one": "{{count}} putt"
+    "voiceSavedPutts_one": "{{count}} putt",
+    "switchToLandscape": "Switch to landscape card",
+    "switchToPortrait": "Switch to portrait card",
+    "puttsShort": "p"
   },
   "gps": {
     "title": "Hole {{hole}}",
