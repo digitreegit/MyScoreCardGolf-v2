@@ -65,7 +65,7 @@
     },
     "pars": {
       "loading": "Looking up pars…",
-      "history": "Par {{total}} · from your last round here",
+      "history": "Par {{total}} · from pars you set on an earlier round",
       "map": "Par {{total}} · from course map data",
       "default": "Par {{total}} · typical layout — fix pars on the score screen"
     }

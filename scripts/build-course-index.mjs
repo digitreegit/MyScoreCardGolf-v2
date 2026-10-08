@@ -22,7 +22,7 @@ const STATES = [
 ];
 
 // Courses mapped in OSM without a name tag (so the query below skips them), named by hand.
-// Matched by comparing OSM pars with real scorecards. Better fix: add the name in OSM itself.
+// North/South confirmed by matching OSM pars to the published scorecards. Better fix: add the name in OSM itself.
 const UNNAMED = [
   ['osm:way/40149863', 'Charleston Springs Golf Course (North)', 'Millstone', 'NJ', 40.22219, -74.37663],
   ['osm:way/40149861', 'Charleston Springs Golf Course (South)', 'Millstone', 'NJ', 40.2144, -74.36227],

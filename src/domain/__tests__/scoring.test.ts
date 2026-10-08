@@ -16,7 +16,7 @@ const round = (over: Partial<Round>, pars: number[], strokes: Array<number | nul
     entry_mode: 'par',
     exclude_from_stats: false,
     notes: '',
-    source: 'v1',
+    source: 'manual',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     deleted_at: null,
@@ -72,6 +72,10 @@ describe('pars from history', () => {
     expect(parsFromHistory(rounds, course, 18)).toEqual(NORTH);
     expect(parsFromHistory(rounds, course, 9)).toEqual(NORTH.slice(0, 9));
     expect(parsFromHistory(rounds.slice(1), course, 18)).toBeNull();
+  });
+  it('ignores rounds imported from v1', () => {
+    const v1 = round({ course_name: 'Charleston North', source: 'v1' }, NORTH);
+    expect(parsFromHistory([v1], { id: null, name: 'Charleston Springs Golf Course (North)' }, 18)).toBeNull();
   });
   it('prefers a round linked by course id and skips deleted rounds', () => {
     const linked = round({ id: 'x', course_id: 'osm:1', course_name: 'Somewhere', played_on: '2026-09-01' }, NORTH);

@@ -70,8 +70,8 @@ export function courseNameMatches(a: string, b: string): boolean {
 const parsWereEntered = (pars: number[]) => new Set(pars).size > 1;
 
 /**
- * Pars from the player's latest round at this course, if they ever set them. This beats map data:
- * the player saw the real card, while OpenStreetMap pars are often estimated from hole length.
+ * Pars from the player's latest v2 round at this course, for courses without map data.
+ * Rounds imported from v1 are skipped: v1 pars were often left at defaults or filled in loosely.
  */
 export function parsFromHistory(
   rounds: RoundWithHoles[],
@@ -81,7 +81,7 @@ export function parsFromHistory(
   const sameCourse = (r: Round) =>
     (course.id != null && r.course_id === course.id) || courseNameMatches(r.course_name, course.name);
   const candidates = rounds
-    .filter(({ round, holes }) => !round.deleted_at && holes.length >= holesCount && sameCourse(round))
+    .filter(({ round, holes }) => round.source !== 'v1' && !round.deleted_at && holes.length >= holesCount && sameCourse(round))
     .sort((a, b) => (b.round.played_on + b.round.updated_at).localeCompare(a.round.played_on + a.round.updated_at));
   for (const { holes } of candidates) {
     const pars = [...holes].sort((a, b) => a.hole_number - b.hole_number).slice(0, holesCount).map((h) => h.par);
