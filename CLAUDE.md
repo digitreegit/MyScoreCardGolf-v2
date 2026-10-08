@@ -19,7 +19,7 @@ i18next. Tests: Jest (`npm test`), typecheck: `npm run typecheck`.
   - Conflict rule: last-write-wins on client `updated_at`, **per round and per hole** (never per whole round).
   - Deletes are soft (`deleted_at`) so they sync.
   - Never import `data/local/*` from a `.web.ts` file or from shared code reachable on web.
-- `src/features/` — feature modules (auth, courses, gps, voice, scan, io).
+- `src/features/` — feature modules (auth, courses, location, voice, scan, io).
 - `supabase/migrations/` — schema + RLS. `supabase/functions/` — Deno edge functions (excluded from app tsconfig).
 
 ## Rules

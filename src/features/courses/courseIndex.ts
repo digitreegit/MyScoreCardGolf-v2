@@ -75,3 +75,16 @@ export function nearestCourses(
     .sort((a, b) => a.meters - b.meters)
     .slice(0, limit);
 }
+
+/** Within this distance of a course's center you are taken to be at that course (big 36-hole sites included). */
+export const AT_COURSE_METERS = 2_500;
+
+/**
+ * Courses the player is probably standing at: everything within AT_COURSE_METERS, closest first.
+ * Falls back to the nearest few within 50 km (shown, never auto-picked) when none is that close.
+ */
+export function coursesHere(me: LatLng, data: CourseSummary[] = load()): { here: boolean; courses: Array<CourseSummary & { meters: number }> } {
+  const near = nearestCourses(me, 5, 50_000, data);
+  const here = near.filter((c) => c.meters <= AT_COURSE_METERS);
+  return here.length ? { here: true, courses: here } : { here: false, courses: near };
+}

@@ -5,11 +5,11 @@ import { Alert, Platform, Pressable, Switch } from 'react-native';
 
 import { countUnsynced } from '@/data/accountData';
 import { getSyncStatus, onSyncStatus, syncNow, type SyncStatus } from '@/data/sync/syncEngine';
-import type { DistanceUnit } from '@/domain/geo';
+import type { EntryMode } from '@/domain/types';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { isVoiceAiEnabled, setVoiceAiEnabled } from '@/features/voice/aiParse';
 import { LANGUAGES, setLanguage } from '@/i18n';
-import { prefs, PREF_KEYS } from '@/lib/prefs';
+import { getScoreMode, setScoreMode } from '@/lib/scoreMode';
 import { Button, Card, Label, Screen, Segmented } from '@/ui/components';
 
 function confirm(title: string, message: string, destructiveLabel: string, onConfirm: () => void) {
@@ -26,7 +26,7 @@ function confirm(title: string, message: string, destructiveLabel: string, onCon
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const { session, isGuest, showSignIn, signOut, deleteAccount } = useAuth();
-  const [unit, setUnit] = useState<DistanceUnit>(() => (prefs.get(PREF_KEYS.distanceUnit) as DistanceUnit) ?? 'yards');
+  const [mode, setMode] = useState<EntryMode>(getScoreMode);
   const [sync, setSync] = useState<SyncStatus>(getSyncStatus());
   const [unsynced, setUnsynced] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -42,9 +42,9 @@ export default function SettingsScreen() {
     setVoiceAi(on);
   };
 
-  const changeUnit = (u: DistanceUnit) => {
-    prefs.set(PREF_KEYS.distanceUnit, u);
-    setUnit(u);
+  const changeMode = (m: EntryMode) => {
+    setScoreMode(m);
+    setMode(m);
   };
 
   const guarded = async (fn: () => Promise<void>) => {
@@ -67,15 +67,16 @@ export default function SettingsScreen() {
           value={i18n.language}
           onChange={setLanguage}
         />
-        <Label>{t('settings.distanceUnit')}</Label>
+        <Label>{t('settings.scoreMode')}</Label>
         <Segmented
           options={[
-            { value: 'yards' as DistanceUnit, label: t('settings.yards') },
-            { value: 'meters' as DistanceUnit, label: t('settings.meters') },
+            { value: 'stroke' as EntryMode, label: t('settings.strokeMode') },
+            { value: 'par' as EntryMode, label: t('settings.parMode') },
           ]}
-          value={unit}
-          onChange={changeUnit}
+          value={mode}
+          onChange={changeMode}
         />
+        <Label muted>{mode === 'par' ? t('settings.parModeNote') : t('settings.strokeModeNote')}</Label>
         {Platform.OS !== 'web' && (
           <>
             {/* The whole row toggles; a bare Switch is a small target on a golf course. */}

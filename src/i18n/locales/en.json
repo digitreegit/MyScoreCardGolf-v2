@@ -43,8 +43,6 @@
     "newTitle": "New round",
     "course": "Course",
     "coursePlaceholder": "Search courses",
-    "nearbyCourses": "Nearby",
-    "findNearby": "Find nearby courses",
     "date": "Date (YYYY-MM-DD)",
     "tee": "Tee",
     "companions": "Playing partners",
@@ -52,15 +50,25 @@
     "notes": "Notes",
     "create": "Start round",
     "enterScores": "Enter scores",
-    "gps": "GPS distances",
     "deleteConfirm": "Delete this round?",
     "excludeFromStats": "Exclude from stats",
     "total": "Total",
     "toPar": "To par",
     "putts": "Putts",
     "changeCourse": "Change",
-    "noNearby": "No courses found within 50 km.",
-    "locationUnavailable": "Couldn't get your location. Try again outdoors, or search by name."
+    "locate": {
+      "locating": "Finding the course you’re at…",
+      "here": "Which course are you playing?",
+      "near": "You don’t seem to be at a course. Nearby:",
+      "none": "No courses nearby. Search by name.",
+      "failed": "Couldn’t get your location. Search by name."
+    },
+    "pars": {
+      "loading": "Looking up pars…",
+      "history": "Par {{total}} · from your last round here",
+      "map": "Par {{total}} · from course map data",
+      "default": "Par {{total}} · typical layout — fix pars on the score screen"
+    }
   },
   "score": {
     "hole": "Hole",
@@ -89,18 +97,6 @@
     "switchToPortrait": "Switch to portrait card",
     "puttsShort": "p"
   },
-  "gps": {
-    "title": "Hole {{hole}}",
-    "front": "Front",
-    "center": "Center",
-    "back": "Back",
-    "accuracy": "GPS ±{{meters}} m",
-    "permissionDenied": "Location access is off. Enable it in Settings to see distances.",
-    "noCourseData": "No GPS data for this course yet.",
-    "privacyNote": "Your location is used only on this device to measure distances. It is never sent or stored.",
-    "prev": "Prev",
-    "next": "Next"
-  },
   "stats": {
     "rounds": "Rounds",
     "avg": "Scoring avg",
@@ -123,9 +119,6 @@
   },
   "settings": {
     "language": "Language",
-    "distanceUnit": "Distance unit",
-    "yards": "Yards",
-    "meters": "Meters",
     "account": "Account",
     "guest": "Guest (this phone only)",
     "signIn": "Sign in / create account",
@@ -142,7 +135,12 @@
     "syncRetrying": "Sync failed — retrying automatically at {{time}}",
     "voiceAi": "AI voice assist",
     "voiceAiNote": "When the app can't understand what you said, the recognized text (never audio) is sent to AI to interpret it. Requires sign-in.",
-    "voiceAiSignIn": "Sign in to use AI voice assist."
+    "voiceAiSignIn": "Sign in to use AI voice assist.",
+    "scoreMode": "Score mode",
+    "strokeMode": "Stroke",
+    "parMode": "Par",
+    "strokeModeNote": "Write strokes: on a par 4, 4 is par and 5 is bogey.",
+    "parModeNote": "Write over/under par: 0 is par, -1 birdie, +1 bogey."
   },
   "io": {
     "title": "Spreadsheet",

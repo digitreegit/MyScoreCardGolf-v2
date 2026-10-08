@@ -21,6 +21,13 @@ const STATES = [
   'PR',
 ];
 
+// Courses mapped in OSM without a name tag (so the query below skips them), named by hand.
+// Matched by comparing OSM pars with real scorecards. Better fix: add the name in OSM itself.
+const UNNAMED = [
+  ['osm:way/40149863', 'Charleston Springs Golf Course (North)', 'Millstone', 'NJ', 40.22219, -74.37663],
+  ['osm:way/40149861', 'Charleston Springs Golf Course (South)', 'Millstone', 'NJ', 40.2144, -74.36227],
+];
+
 const round5 = (n) => Math.round(n * 1e5) / 1e5;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,6 +73,7 @@ async function main() {
     await sleep(1_000);
   }
 
+  for (const row of UNNAMED) if (!rows.has(row[0])) rows.set(row[0], row);
   const out = [...rows.values()].sort((a, b) => a[1].localeCompare(b[1]));
   const file = new URL('../assets/courses/us-index.json', import.meta.url);
   await writeFile(file, JSON.stringify(out));

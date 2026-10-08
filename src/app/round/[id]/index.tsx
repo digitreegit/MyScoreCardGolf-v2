@@ -50,9 +50,6 @@ export default function RoundDetailScreen() {
       </Card>
 
       <Button title={t('round.enterScores')} onPress={() => router.push(`/round/${round.id}/score`)} />
-      {round.course_id && Platform.OS !== 'web' && (
-        <Button title={t('round.gps')} variant="secondary" onPress={() => router.push(`/round/${round.id}/gps`)} />
-      )}
 
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

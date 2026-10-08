@@ -23,6 +23,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'automatic',
   ios: {
     bundleIdentifier: IOS_BUNDLE_ID,
+    appleTeamId: 'T42D4PX35G', // SKYFACE, LLC (paid team that publishes the app; personal teams can't sign Sign in with Apple)
     supportsTablet: false,
     usesAppleSignIn: true,
     infoPlist: {
@@ -57,7 +58,7 @@ const config: ExpoConfig = {
       'expo-location',
       {
         locationWhenInUsePermission:
-          'My Score Card uses your location only on this device to show distances to the green. It is never sent or stored.',
+          'My Score Card uses your location only on this device to recognize the golf course you are at. It is never sent or stored.',
         isIosBackgroundLocationEnabled: false,
         isAndroidBackgroundLocationEnabled: false,
         isAndroidForegroundServiceEnabled: false,

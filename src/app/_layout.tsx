@@ -55,7 +55,6 @@ function RootNavigator() {
           <Stack.Screen name="round/new" options={{ title: t('round.newTitle'), presentation: 'modal' }} />
           <Stack.Screen name="round/[id]/index" options={{ title: '' }} />
           <Stack.Screen name="round/[id]/score" options={{ headerShown: false }} />
-          <Stack.Screen name="round/[id]/gps" options={{ title: t('round.gps') }} />
           <Stack.Screen name="scan" options={{ title: t('scan.title') }} />
           <Stack.Screen name="import-export" options={{ title: t('io.title') }} />
         </Stack.Protected>

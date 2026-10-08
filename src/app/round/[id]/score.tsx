@@ -2,6 +2,8 @@
 //   portrait (default): 6-column hole tiles on top, number pad at the bottom
 //   landscape: the full paper-style card with the pad on the right (18Birdies-style)
 // Entering strokes jumps to that hole's putts; entering putts jumps to the next hole.
+// Settings → Score mode decides whether the card reads in strokes (5) or over/under par (+1).
+// The par of the selected hole can be corrected on the pad (map data and defaults can be wrong).
 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
@@ -13,14 +15,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useRound } from '@/data/hooks';
 import { updateHole } from '@/data/repository';
+import { displayScore, formatToPar, padStrokes, parChangePatch, toParRange } from '@/domain/scoring';
 import { roundTotals, sumRange } from '@/domain/stats';
-import type { RoundHole } from '@/domain/types';
+import type { EntryMode, RoundHole } from '@/domain/types';
 import type { ParsedScore } from '@/domain/voice/parseScoreUtterance';
 import { resolveStrokes } from '@/domain/voice/parseScoreUtterance';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { isVoiceAiEnabled, parseVoiceWithAI } from '@/features/voice/aiParse';
 import { useVoiceScore } from '@/features/voice/useVoiceScore';
 import { prefs, PREF_KEYS } from '@/lib/prefs';
+import { getScoreMode } from '@/lib/scoreMode';
 import { Loading } from '@/ui/components';
 import { radius, scoreColor, spacing, useColors, type Colors } from '@/ui/theme';
 
@@ -48,6 +52,7 @@ export default function ScoreEntryScreen() {
   const [layout, setLayout] = useState<Layout>(() =>
     prefs.get(PREF_KEYS.scoreLayout) === 'landscape' ? 'landscape' : 'portrait',
   );
+  const [mode] = useState<EntryMode>(getScoreMode);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
@@ -117,7 +122,7 @@ export default function ScoreEntryScreen() {
       let target = holes.find((h) => h.hole_number === holeNumber);
       const patch: Partial<RoundHole> = {};
       if (parsed && target) {
-        const strokes = resolveStrokes(parsed, target.par);
+        const strokes = resolveStrokes(parsed, target.par, mode);
         if (strokes != null) patch.strokes = strokes;
         if (parsed.putts != null) patch.putts = parsed.putts;
       }
@@ -136,6 +141,7 @@ export default function ScoreEntryScreen() {
           transcript,
           holes.map((h) => ({ hole_number: h.hole_number, par: h.par })),
           sel.hole,
+          mode,
         );
         if (__DEV__) console.log('[voice] ai', JSON.stringify(ai));
         if (ai) {
@@ -155,7 +161,11 @@ export default function ScoreEntryScreen() {
       // Show what was actually saved, so a misheard score is easy to spot and fix.
       const saved = [
         t('score.voiceSavedHole', { hole: target.hole_number }),
-        patch.strokes != null ? t('score.voiceSavedStrokes', { count: patch.strokes }) : null,
+        patch.strokes == null
+          ? null
+          : mode === 'par'
+            ? `${t('score.score')} ${displayScore(patch.strokes, target.par, mode)}`
+            : t('score.voiceSavedStrokes', { count: patch.strokes }),
         patch.putts != null ? t('score.voiceSavedPutts', { count: patch.putts }) : null,
       ]
         .filter(Boolean)
@@ -163,7 +173,7 @@ export default function ScoreEntryScreen() {
       setVoiceMsg(t(viaAi ? 'score.voiceAiSaved' : 'score.voiceSaved', { saved, text: transcript }));
       if (target.hole_number < holes.length) setSel({ hole: target.hole_number + 1, field: 'strokes' });
     },
-    [holes, sel.hole, t, userId],
+    [holes, sel.hole, t, userId, mode],
   );
 
   const voice = useVoiceScore((p, text) => void onVoice(p, text));
@@ -173,6 +183,14 @@ export default function ScoreEntryScreen() {
 
   const totals = roundTotals(holes);
   const selectedHole = holeAt(sel.hole);
+  const totalText = !totals.holesPlayed
+    ? ''
+    : mode === 'par'
+      ? `${formatToPar(totals.toPar)} (${totals.strokes})`
+      : `${totals.strokes} (${totals.toPar > 0 ? '+' : ''}${totals.toPar === 0 ? 'E' : totals.toPar})`;
+  const changePar = (hole: RoundHole, par: number) => {
+    if (par !== hole.par) void updateHole(hole, parChangePatch(hole, par, mode));
+  };
   const nines = holes.length > 9 ? [1, 10] : [1];
 
   return (
@@ -185,7 +203,7 @@ export default function ScoreEntryScreen() {
           {data.round.course_name}
         </Text>
         <Text style={[styles.total, { color: c.text }]}>
-          {totals.holesPlayed ? `${totals.strokes} (${totals.toPar > 0 ? '+' : ''}${totals.toPar === 0 ? 'E' : totals.toPar})` : ''}
+          {totalText}
         </Text>
         {Platform.OS !== 'web' && (
           <Pressable
@@ -227,17 +245,19 @@ export default function ScoreEntryScreen() {
 
       {layout === 'portrait' ? (
         <View style={[styles.flex, { gap: spacing.sm, padding: spacing.sm }]}>
-          <HoleTiles c={c} holes={holes} sel={sel} onSelect={setSel} />
-          <TotalsLine c={c} holes={holes} totals={totals} />
+          <HoleTiles c={c} holes={holes} mode={mode} sel={sel} onSelect={setSel} />
+          <TotalsLine c={c} holes={holes} mode={mode} totals={totals} />
           {selectedHole && (
             <View style={styles.bottomPad}>
               <InputPad
                 c={c}
                 wide={false}
+                mode={mode}
                 hole={selectedHole}
                 field={sel.field}
                 labels={{ hole: t('score.hole'), score: t('score.score'), putts: t('score.putts') }}
                 onPick={(v) => setValue(selectedHole, sel.field, v)}
+                onPar={(p) => changePar(selectedHole, p)}
                 onField={(f) => setSel({ hole: sel.hole, field: f })}
               />
             </View>
@@ -250,6 +270,7 @@ export default function ScoreEntryScreen() {
               <NineGrid
                 key={start}
                 c={c}
+                mode={mode}
                 holes={holes.filter((h) => h.hole_number >= start && h.hole_number < start + 9)}
                 subtotalLabel={start === 1 ? t('score.out') : t('score.in')}
                 grandTotal={start === 10 || holes.length === 9 ? totals : null}
@@ -264,10 +285,12 @@ export default function ScoreEntryScreen() {
             <InputPad
               c={c}
               wide={wide}
+              mode={mode}
               hole={selectedHole}
               field={sel.field}
               labels={{ hole: t('score.hole'), score: t('score.score'), putts: t('score.putts') }}
               onPick={(v) => setValue(selectedHole, sel.field, v)}
+              onPar={(p) => changePar(selectedHole, p)}
               onField={(f) => setSel({ hole: sel.hole, field: f })}
             />
           )}
@@ -283,11 +306,13 @@ const TILE_COLUMNS = 6;
 function HoleTiles({
   c,
   holes,
+  mode,
   sel,
   onSelect,
 }: {
   c: Colors;
   holes: RoundHole[];
+  mode: EntryMode;
   sel: Selection;
   onSelect: (s: Selection) => void;
 }) {
@@ -318,7 +343,7 @@ function HoleTiles({
                   <Text style={[styles.tileHole, { color: c.text }]}>{h.hole_number}</Text>
                   <Text style={[styles.tilePar, { color: c.textMuted }]}>P{h.par}</Text>
                 </View>
-                <Text style={[styles.tileScore, { color: scoreColor(c, h.strokes, h.par) }]}>{h.strokes ?? '–'}</Text>
+                <Text style={[styles.tileScore, { color: scoreColor(c, h.strokes, h.par) }]}>{h.strokes == null ? '–' : displayScore(h.strokes, h.par, mode)}</Text>
                 <Text
                   style={[
                     styles.tilePutts,
@@ -340,13 +365,32 @@ function HoleTiles({
 }
 
 /** Portrait: Out / In / Total / Putts in one line under the tiles. */
-function TotalsLine({ c, holes, totals }: { c: Colors; holes: RoundHole[]; totals: ReturnType<typeof roundTotals> }) {
+function TotalsLine({
+  c,
+  holes,
+  mode,
+  totals,
+}: {
+  c: Colors;
+  holes: RoundHole[];
+  mode: EntryMode;
+  totals: ReturnType<typeof roundTotals>;
+}) {
   const { t } = useTranslation();
   const toPar = (n: number) => (n === 0 ? 'E' : n > 0 ? `+${n}` : String(n));
+  const range = (from: number, to: number) => {
+    const v = mode === 'par' ? toParRange(holes, from, to) : sumRange(holes, from, to, 'strokes');
+    return v == null ? '–' : mode === 'par' ? formatToPar(v) : String(v);
+  };
+  const total = !totals.holesPlayed
+    ? '–'
+    : mode === 'par'
+      ? `${formatToPar(totals.toPar)} (${totals.strokes})`
+      : `${totals.strokes} (${toPar(totals.toPar)})`;
   const parts = [
-    `${t('score.out')} ${sumRange(holes, 1, 9, 'strokes') ?? '–'}`,
-    holes.length > 9 ? `${t('score.in')} ${sumRange(holes, 10, 18, 'strokes') ?? '–'}` : null,
-    `${t('score.total')} ${totals.holesPlayed ? `${totals.strokes} (${toPar(totals.toPar)})` : '–'}`,
+    `${t('score.out')} ${range(1, 9)}`,
+    holes.length > 9 ? `${t('score.in')} ${range(10, 18)}` : null,
+    `${t('score.total')} ${total}`,
     `${t('score.putts')} ${totals.putts ?? '–'}`,
   ].filter(Boolean);
   return (
@@ -358,6 +402,7 @@ function TotalsLine({ c, holes, totals }: { c: Colors; holes: RoundHole[]; total
 
 function NineGrid({
   c,
+  mode,
   holes,
   subtotalLabel,
   grandTotal,
@@ -367,6 +412,7 @@ function NineGrid({
   onSelect,
 }: {
   c: Colors;
+  mode: EntryMode;
   holes: RoundHole[];
   subtotalLabel: string;
   grandTotal: ReturnType<typeof roundTotals> | null;
@@ -379,6 +425,12 @@ function NineGrid({
   const from = holes[0].hole_number;
   const to = holes[holes.length - 1].hole_number;
   const sub = (k: 'par' | 'strokes' | 'putts') => sumRange(holes, from, to, k) ?? '';
+  const subScore = () => {
+    if (mode === 'stroke') return sub('strokes');
+    const v = toParRange(holes, from, to);
+    return v == null ? '' : formatToPar(v);
+  };
+  const totalScore = !grandTotal?.holesPlayed ? '' : mode === 'par' ? formatToPar(grandTotal.toPar) : grandTotal.strokes;
 
   const cell = (
     content: string | number,
@@ -420,14 +472,14 @@ function NineGrid({
         labels.score,
         'score',
         (h) =>
-          cell(h.strokes ?? '', {
+          cell(displayScore(h.strokes, h.par, mode), {
             key: `s${h.hole_number}`,
             color: scoreColor(c, h.strokes, h.par),
             bg: isSel(h, 'strokes') ? c.selected : undefined,
             onPress: () => onSelect({ hole: h.hole_number, field: 'strokes' }),
           }),
-        sub('strokes'),
-        grandTotal?.holesPlayed ? grandTotal.strokes : '',
+        subScore(),
+        totalScore,
       )}
       {row(
         labels.putts,
@@ -447,29 +499,52 @@ function NineGrid({
 
 const TERM_KEYS: Record<number, string> = { [-2]: 'stats.eagleOrBetter', [-1]: 'stats.birdie', 0: 'stats.par', 1: 'stats.bogey', 2: 'stats.double' };
 
+const PAR_CHOICES = [3, 4, 5];
+
 function InputPad({
   c,
   wide,
+  mode,
   hole,
   field,
   labels,
   onPick,
+  onPar,
   onField,
 }: {
   c: Colors;
   wide: boolean;
+  mode: EntryMode;
   hole: RoundHole;
   field: Field;
   labels: { hole: string; score: string; putts: string };
   onPick: (v: number | null) => void;
+  onPar: (par: number) => void;
   onField: (f: Field) => void;
 }) {
   const { t } = useTranslation();
-  const values = field === 'strokes' ? Array.from({ length: 10 }, (_, i) => i + 1) : [0, 1, 2, 3, 4, 5];
+  const values = field === 'strokes' ? padStrokes(hole.par, mode) : [0, 1, 2, 3, 4, 5];
   const current = hole[field];
 
   return (
     <View style={[styles.pad, { width: wide ? 240 : '100%', backgroundColor: c.surface, borderColor: c.border }]}>
+      <View style={styles.parRow}>
+        <Text style={{ color: c.textMuted, fontWeight: '600' }}>
+          {t('score.par')}
+        </Text>
+        {PAR_CHOICES.map((p) => (
+          <Pressable
+            key={p}
+            accessibilityRole="button"
+            accessibilityState={{ selected: hole.par === p }}
+            accessibilityLabel={`${t('score.par')} ${p}`}
+            onPress={() => onPar(p)}
+            hitSlop={4}
+            style={[styles.parKey, { backgroundColor: hole.par === p ? c.text : c.bg, borderColor: c.border }]}>
+            <Text style={{ fontWeight: '700', color: hole.par === p ? c.bg : c.text }}>{p}</Text>
+          </Pressable>
+        ))}
+      </View>
       <View style={{ flexDirection: 'row', gap: spacing.xs }}>
         {(['strokes', 'putts'] as const).map((f) => (
           <Pressable
@@ -502,7 +577,7 @@ function InputPad({
                 },
               ]}>
               <Text style={{ fontSize: 20, fontWeight: '700', color: active ? c.primaryText : field === 'strokes' ? scoreColor(c, v, hole.par) : c.text }}>
-                {v}
+                {field === 'strokes' ? displayScore(v, hole.par, mode) : v}
               </Text>
               {term && <Text style={{ fontSize: 10, color: active ? c.primaryText : c.textMuted }}>{t(term)}</Text>}
             </Pressable>
@@ -547,6 +622,14 @@ const styles = StyleSheet.create({
   labelCell: { flex: 1.7 },
   labelText: { fontSize: 13 },
   pad: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: spacing.sm, gap: spacing.sm },
+  parRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  parKey: {
+    minWidth: 40,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+  },
   padTab: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm, alignItems: 'center' },
   padGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, alignContent: 'flex-start' },
   padKeyLarge: { minHeight: 60 }, // portrait: bigger targets (gloves, sunlight)

@@ -43,8 +43,6 @@
     "newTitle": "새 라운드",
     "course": "골프장",
     "coursePlaceholder": "골프장 검색",
-    "nearbyCourses": "근처",
-    "findNearby": "근처 골프장 찾기",
     "date": "날짜 (YYYY-MM-DD)",
     "tee": "티",
     "companions": "동반자",
@@ -52,15 +50,25 @@
     "notes": "메모",
     "create": "라운드 시작",
     "enterScores": "스코어 입력",
-    "gps": "GPS 거리",
     "deleteConfirm": "이 라운드를 삭제할까요?",
     "excludeFromStats": "통계에서 제외",
     "total": "합계",
     "toPar": "파 대비",
     "putts": "퍼트",
     "changeCourse": "변경",
-    "noNearby": "50km 안에 골프장이 없어요.",
-    "locationUnavailable": "위치를 확인하지 못했어요. 실외에서 다시 시도하거나 이름으로 검색하세요."
+    "locate": {
+      "locating": "지금 있는 골프장을 찾는 중…",
+      "here": "어느 코스에서 치시나요?",
+      "near": "골프장 안이 아닌 것 같아요. 근처 골프장:",
+      "none": "근처에 골프장이 없어요. 이름으로 검색하세요.",
+      "failed": "위치를 가져오지 못했어요. 이름으로 검색하세요."
+    },
+    "pars": {
+      "loading": "파 정보 찾는 중…",
+      "history": "파 {{total}} · 지난 라운드 기준",
+      "map": "파 {{total}} · 코스 지도 데이터 기준",
+      "default": "파 {{total}} · 기본 배치 — 스코어 화면에서 파를 고칠 수 있어요"
+    }
   },
   "score": {
     "hole": "홀",
@@ -87,18 +95,6 @@
     "switchToPortrait": "세로 스코어카드로 전환",
     "puttsShort": "퍼트"
   },
-  "gps": {
-    "title": "{{hole}}번 홀",
-    "front": "앞",
-    "center": "중앙",
-    "back": "뒤",
-    "accuracy": "GPS 오차 ±{{meters}}m",
-    "permissionDenied": "위치 권한이 꺼져 있어요. 설정에서 켜면 거리를 볼 수 있습니다.",
-    "noCourseData": "이 골프장은 아직 GPS 데이터가 없어요.",
-    "privacyNote": "위치는 이 기기 안에서 거리 계산에만 쓰이며, 전송되거나 저장되지 않습니다.",
-    "prev": "이전",
-    "next": "다음"
-  },
   "stats": {
     "rounds": "라운드 수",
     "avg": "평균 스코어",
@@ -121,9 +117,6 @@
   },
   "settings": {
     "language": "언어",
-    "distanceUnit": "거리 단위",
-    "yards": "야드",
-    "meters": "미터",
     "account": "계정",
     "guest": "게스트 (이 폰에만 저장)",
     "signIn": "로그인 / 가입",
@@ -140,7 +133,12 @@
     "syncRetrying": "동기화 실패 — {{time}}에 자동으로 다시 시도합니다",
     "voiceAi": "AI 음성 보조",
     "voiceAiNote": "앱이 말을 알아듣지 못하면 인식된 글자(음성은 보내지 않음)를 AI가 다시 해석합니다. 로그인이 필요합니다.",
-    "voiceAiSignIn": "AI 음성 보조는 로그인 후 사용할 수 있어요."
+    "voiceAiSignIn": "AI 음성 보조는 로그인 후 사용할 수 있어요.",
+    "scoreMode": "스코어 모드",
+    "strokeMode": "스트로크",
+    "parMode": "파",
+    "strokeModeNote": "타수로 기록: 파4에서 4가 파, 5가 보기.",
+    "parModeNote": "파 대비로 기록: 파는 0, 버디 -1, 보기 +1."
   },
   "io": {
     "title": "스프레드시트",

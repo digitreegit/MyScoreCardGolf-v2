@@ -1,3 +1,5 @@
+import type { EntryMode } from '../types';
+
 // Rule-based parser for spoken score entry. Runs on-device on the transcript produced by
 // the OS speech recognizer. English and Korean are supported side by side, so a bilingual
 // golfer can mix them ("7번 bogey two putts"). Unrecognized phrases return null and the
@@ -12,6 +14,8 @@ export interface ParsedScore {
   /** Korean "양파": double par. */
   doublePar: boolean;
   putts: number | null;
+  /** A number said on its own ("hole 7, 2"): strokes in stroke mode, strokes over par in par mode. */
+  bare: number | null;
   /** True when the result relied on correcting likely mishearings (part→par, pets→putts, or→hole…). */
   guessed: boolean;
 }
@@ -148,6 +152,7 @@ export function parseScoreUtterance(text: string): ParsedScore | null {
   let strokes: number | null = null;
   let toPar: number | null = null;
   let doublePar = false;
+  let bare: number | null = null;
 
   for (const rule of TERM_RULES) {
     const { match, rest } = take(s, rule.re);
@@ -168,19 +173,24 @@ export function parseScoreUtterance(text: string): ParsedScore | null {
   if (strokes == null && toPar == null && !doublePar) {
     const explicit =
       s.match(/\b(?:shot|made|got|scored|score|had|took|carded) (?:a )?(\d{1,2})\b/) ?? s.match(/(\d{1,2}) ?(?:타|개)/);
-    const bare = s.match(/\b(\d{1,2})\b/);
-    const n = explicit ? Number(explicit[1]) : bare ? Number(bare[1]) : NaN;
+    const lone = s.match(/\b(\d{1,2})\b/);
+    const n = explicit ? Number(explicit[1]) : lone ? Number(lone[1]) : NaN;
+    if (!explicit && n >= 0 && n <= 9) bare = n;
     // A lone "1" is almost always a misheard word; a hole-in-one must be said as such ("ace").
     const min = explicit ? 1 : 2;
     if (n >= min && n <= 15) strokes = n;
   }
 
-  if (h.hole == null && strokes == null && toPar == null && !doublePar && p.putts == null) return null;
-  return { hole: h.hole, strokes, toPar, doublePar, putts: p.putts, guessed };
+  if (h.hole == null && strokes == null && toPar == null && !doublePar && p.putts == null && bare == null) return null;
+  return { hole: h.hole, strokes, toPar, doublePar, putts: p.putts, bare, guessed };
 }
 
-/** Converts a parsed utterance into absolute strokes for a hole with the given par. */
-export function resolveStrokes(parsed: ParsedScore, par: number): number | null {
+/**
+ * Converts a parsed utterance into absolute strokes for a hole with the given par. In par mode a
+ * number said on its own is over/under par, matching how the card is written ("2" = double bogey).
+ */
+export function resolveStrokes(parsed: ParsedScore, par: number, mode: EntryMode = 'stroke'): number | null {
+  if (mode === 'par' && parsed.bare != null) return Math.max(1, par + parsed.bare);
   if (parsed.strokes != null) return parsed.strokes;
   if (parsed.doublePar) return par * 2;
   if (parsed.toPar != null) return Math.max(1, par + parsed.toPar);

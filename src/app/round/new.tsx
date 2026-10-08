@@ -1,26 +1,37 @@
+// New round. On the phone, the course you're standing at is recognized automatically from the
+// bundled course list (on-device; the position is never sent). One match is picked for you,
+// several (e.g. a 36-hole club) are listed to choose from. Pars are filled in from your own
+// last round there, else map data — see features/courses/coursePars.
+
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Keyboard, Platform, Pressable, Text, View } from 'react-native';
 
 import { saveRounds } from '@/data/repository';
 import { emptyHoles, nowIso, TEE_BOXES, todayLocalDate, type Round, type TeeBox } from '@/domain/types';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { getCourseDetail, prefetchCourse } from '@/features/courses/courseDetail';
-import { courseLocation, nearestCourses, searchCourses, type CourseSummary } from '@/features/courses/courseIndex';
-import { getCurrentPositionOnce } from '@/features/gps/useDeviceLocation';
+import { prefetchCourse } from '@/features/courses/courseDetail';
+import { coursesHere, courseLocation, searchCourses, type CourseSummary } from '@/features/courses/courseIndex';
+import { parsForCourse, type ParSource } from '@/features/courses/coursePars';
+import { getCurrentPositionOnce } from '@/features/location/currentPosition';
 import { newId } from '@/lib/id';
+import { getScoreMode } from '@/lib/scoreMode';
 import { Button, Card, Field, Label, Screen, Segmented } from '@/ui/components';
 import { radius, spacing, useColors } from '@/ui/theme';
 
 export default function NewRoundScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const c = useColors();
   const { userId } = useAuth();
 
   const [query, setQuery] = useState('');
-  const [course, setCourse] = useState<CourseSummary | null>(null);
-  const [nearby, setNearby] = useState<CourseSummary[]>([]);
+  const [course, setCourse] = useState<(CourseSummary & { meters?: number }) | null>(null);
+  const [nearby, setNearby] = useState<Array<CourseSummary & { meters: number }>>([]);
+  const [locate, setLocate] = useState<'idle' | 'locating' | 'here' | 'near' | 'none' | 'failed'>(
+    Platform.OS === 'web' ? 'idle' : 'locating',
+  );
+  const [parInfo, setParInfo] = useState<{ courseId: string; holes: number; pars: number[]; source: ParSource } | null>(null);
   const [date, setDate] = useState(todayLocalDate());
   const [tee, setTee] = useState<TeeBox | null>(null);
   const [holesCount, setHolesCount] = useState<9 | 18>(18);
@@ -28,20 +39,43 @@ export default function NewRoundScreen() {
   const [saving, setSaving] = useState(false);
 
   const results = useMemo(() => (course ? [] : searchCourses(query, 8)), [query, course]);
-  const suggestions = query ? results : nearby;
+  const suggestions: Array<CourseSummary & { meters?: number }> = query ? results : nearby;
 
-  const findNearby = async () => {
-    // Matched against the bundled course list on the device — the position is not sent anywhere.
-    try {
-      const me = await getCurrentPositionOnce();
-      if (!me) return; // permission denied
-      const found = nearestCourses(me, 5);
-      if (!found.length) Alert.alert(t('round.noNearby'));
-      setNearby(found);
-    } catch {
-      Alert.alert(t('round.locationUnavailable')); // no GPS fix yet (indoors, airplane mode, simulator)
-    }
-  };
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let cancelled = false;
+    getCurrentPositionOnce()
+      .then((me) => {
+        if (cancelled) return;
+        if (!me) return setLocate('idle'); // permission denied: search by name
+        const found = coursesHere(me);
+        setNearby(found.courses);
+        setLocate(found.here ? 'here' : found.courses.length ? 'near' : 'none');
+        // Exactly one course here: pick it. Several (36-hole clubs, neighbors): let the player choose.
+        if (found.here && found.courses.length === 1) setCourse((cur) => cur ?? found.courses[0]);
+      })
+      .catch(() => !cancelled && setLocate('failed')); // no fix yet (indoors, airplane mode)
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Look up pars as soon as a course is picked, so "Start round" doesn't wait on the network.
+  useEffect(() => {
+    if (!course) return;
+    let cancelled = false;
+    void prefetchCourse(course.id);
+    void parsForCourse(course, holesCount).then((r) => {
+      if (!cancelled) setParInfo({ courseId: course.id, holes: holesCount, ...r });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [course, holesCount]);
+  const pars = parInfo && course && parInfo.courseId === course.id && parInfo.holes === holesCount ? parInfo : null;
+
+  const distance = (meters: number) =>
+    i18n.language.startsWith('ko') ? `${(meters / 1000).toFixed(1)} km` : `${(meters / 1609.344).toFixed(1)} mi`;
 
   const create = async () => {
     const courseName = course?.name ?? query.trim();
@@ -50,8 +84,7 @@ export default function NewRoundScreen() {
     try {
       const id = newId();
       const at = nowIso();
-      const detail = course ? await getCourseDetail(course.id).catch(() => null) : null;
-      const pars = detail?.holes.length ? detail.holes.map((h) => h.par) : undefined;
+      const holePars = (pars ?? (await parsForCourse({ id: course?.id ?? null, name: courseName }, holesCount))).pars;
       const round: Round = {
         id,
         user_id: userId,
@@ -61,7 +94,7 @@ export default function NewRoundScreen() {
         companions: companions.trim(),
         played_on: date,
         holes_count: holesCount,
-        entry_mode: 'stroke',
+        entry_mode: getScoreMode(),
         exclude_from_stats: false,
         notes: '',
         source: 'manual',
@@ -69,8 +102,7 @@ export default function NewRoundScreen() {
         updated_at: at,
         deleted_at: null,
       };
-      await saveRounds([{ round, holes: emptyHoles(id, userId, holesCount, pars, at) }]);
-      if (course) void prefetchCourse(course.id);
+      await saveRounds([{ round, holes: emptyHoles(id, userId, holesCount, holePars, at) }]);
       router.replace(`/round/${id}/score`);
     } catch (err) {
       Alert.alert(t('common.error'), (err as Error).message);
@@ -92,7 +124,10 @@ export default function NewRoundScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: c.text, fontWeight: '600' }}>{course.name}</Text>
                 <Text style={{ color: c.textMuted }}>
-                  {courseLocation(course)}
+                  {[courseLocation(course), course.meters != null ? distance(course.meters) : null].filter(Boolean).join(' · ')}
+                </Text>
+                <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }}>
+                  {pars ? t(`round.pars.${pars.source}`, { total: pars.pars.reduce((a, b) => a + b, 0) }) : t('round.pars.loading')}
                 </Text>
               </View>
               <Pressable onPress={() => setCourse(null)} hitSlop={8}>
@@ -108,8 +143,8 @@ export default function NewRoundScreen() {
             onChangeText={setQuery}
           />
         )}
-        {Platform.OS !== 'web' && !query && !course && (
-          <Button title={t('round.findNearby')} variant="secondary" onPress={() => void findNearby()} />
+        {!query && !course && locate !== 'idle' && (
+          <Label muted>{t(`round.locate.${locate}`)}</Label>
         )}
         {!course &&
           suggestions.map((s) => (
@@ -122,7 +157,7 @@ export default function NewRoundScreen() {
               style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceAlt }}>
               <Text style={{ color: c.text, fontWeight: '600' }}>{s.name}</Text>
               <Text style={{ color: c.textMuted }}>
-                {courseLocation(s)}
+                {[courseLocation(s), s.meters != null ? distance(s.meters) : null].filter(Boolean).join(' · ')}
               </Text>
             </Pressable>
           ))}

@@ -11,6 +11,7 @@ describe('parseScoreUtterance (English)', () => {
       toPar: 1,
       doublePar: false,
       putts: 2,
+      bare: null,
       guessed: false,
     });
   });
@@ -59,9 +60,9 @@ describe('parseScoreUtterance (Korean)', () => {
 
 describe('resolveStrokes', () => {
   it('converts relative results using par', () => {
-    expect(resolveStrokes({ hole: null, strokes: null, toPar: -1, doublePar: false, putts: null, guessed: false }, 4)).toBe(3);
-    expect(resolveStrokes({ hole: null, strokes: null, toPar: null, doublePar: true, putts: null, guessed: false }, 5)).toBe(10);
-    expect(resolveStrokes({ hole: null, strokes: 6, toPar: 1, doublePar: false, putts: null, guessed: false }, 4)).toBe(6);
+    expect(resolveStrokes({ hole: null, strokes: null, toPar: -1, doublePar: false, putts: null, bare: null, guessed: false }, 4)).toBe(3);
+    expect(resolveStrokes({ hole: null, strokes: null, toPar: null, doublePar: true, putts: null, bare: null, guessed: false }, 5)).toBe(10);
+    expect(resolveStrokes({ hole: null, strokes: 6, toPar: 1, doublePar: false, putts: null, bare: null, guessed: false }, 4)).toBe(6);
   });
 });
 
@@ -114,5 +115,23 @@ describe('sanitizeAiResult', () => {
     expect(sanitizeAiResult({ understood: true, hole: 1, strokes: 3, putts: 4 }, 18)).toBeNull();
     expect(sanitizeAiResult({ understood: true, hole: 1, strokes: 4.5, putts: null }, 18)).toBeNull();
     expect(sanitizeAiResult('nope', 18)).toBeNull();
+  });
+});
+
+describe('par mode voice', () => {
+  const resolve = (text: string, par: number) => resolveStrokes(parseScoreUtterance(text)!, par, 'par');
+  it('reads a number said on its own as over/under par', () => {
+    expect(resolve('hole 7 2', 4)).toBe(6);
+    expect(resolve('1', 5)).toBe(6);
+    expect(resolve('0', 3)).toBe(3);
+    expect(resolve('minus 1', 4)).toBe(3);
+  });
+  it('keeps terms and explicit stroke counts absolute', () => {
+    expect(resolve('bogey two putts', 4)).toBe(5);
+    expect(resolve('shot a 6', 4)).toBe(6);
+    expect(resolve('5타', 4)).toBe(5);
+  });
+  it('still treats a lone number as strokes in stroke mode', () => {
+    expect(resolveStrokes(parseScoreUtterance('hole 7 5')!, 4)).toBe(5);
   });
 });

@@ -29,6 +29,7 @@ const SYSTEM = `You convert a golfer's spoken score into structured data. The te
 Rules:
 - hole: only if a hole number was spoken; otherwise null (the app uses the currently selected hole).
 - strokes: absolute strokes. Convert relative terms with the par of the hole the score is for (named hole, else the current hole): eagle -2, birdie -1, par 0, bogey +1, double +2, triple +3, double par = 2x par, hole in one = 1.
+- Score mode "par": the golfer writes scores over/under par, so a number said on its own is relative to par ("2" on a par 4 = 6 strokes, "0" = par, "minus 1" = birdie). Score mode "stroke": a number on its own is the stroke count.
 - putts: only if spoken.
 - If nothing about strokes or putts can be inferred with reasonable confidence, set understood=false and the other fields null. Never invent numbers.`;
 
@@ -36,6 +37,7 @@ interface Body {
   transcript?: string;
   holes?: Array<{ hole_number: number; par: number }>;
   currentHole?: number;
+  scoreMode?: 'par' | 'stroke';
 }
 
 Deno.serve(async (req) => {
@@ -74,7 +76,7 @@ Deno.serve(async (req) => {
       messages: [
         {
           role: 'user',
-          content: `Pars (hole:par): ${parTable}\nCurrent hole: ${body.currentHole ?? 'unknown'}\nTranscript: ${JSON.stringify(transcript)}`,
+          content: `Pars (hole:par): ${parTable}\nCurrent hole: ${body.currentHole ?? 'unknown'}\nScore mode: ${body.scoreMode === 'par' ? 'par' : 'stroke'}\nTranscript: ${JSON.stringify(transcript)}`,
         },
       ],
     });
