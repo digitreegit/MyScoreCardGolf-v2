@@ -36,7 +36,7 @@ const fold = (s: string) =>
     .replace(/[^a-z0-9가-힣 ]/g, ' ');
 
 // Folded search text per course, computed once per data set (the full index has ~13k courses).
-const searchText = new WeakMap<CourseSummary[], Array<{ hay: string; name: string }>>();
+const searchText = new WeakMap<CourseSummary[], { hay: string; name: string }[]>();
 
 function foldedIndex(data: CourseSummary[]) {
   let folded = searchText.get(data);
@@ -51,7 +51,7 @@ export function searchCourses(query: string, limit = 20, data: CourseSummary[] =
   const terms = fold(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
   const folded = foldedIndex(data);
-  const scored: Array<{ c: CourseSummary; score: number }> = [];
+  const scored: { c: CourseSummary; score: number }[] = [];
   for (let i = 0; i < data.length; i++) {
     const { hay, name } = folded[i];
     if (!terms.every((t) => hay.includes(t))) continue;
@@ -68,7 +68,7 @@ export function nearestCourses(
   limit = 5,
   maxMeters = 50_000,
   data: CourseSummary[] = load(),
-): Array<CourseSummary & { meters: number }> {
+): (CourseSummary & { meters: number })[] {
   return data
     .map((c) => ({ ...c, meters: haversineMeters(me, c) }))
     .filter((c) => c.meters <= maxMeters)
@@ -83,7 +83,7 @@ export const AT_COURSE_METERS = 2_500;
  * Courses the player is probably standing at: everything within AT_COURSE_METERS, closest first.
  * Falls back to the nearest few within 50 km (shown, never auto-picked) when none is that close.
  */
-export function coursesHere(me: LatLng, data: CourseSummary[] = load()): { here: boolean; courses: Array<CourseSummary & { meters: number }> } {
+export function coursesHere(me: LatLng, data: CourseSummary[] = load()): { here: boolean; courses: (CourseSummary & { meters: number })[] } {
   const near = nearestCourses(me, 5, 50_000, data);
   const here = near.filter((c) => c.meters <= AT_COURSE_METERS);
   return here.length ? { here: true, courses: here } : { here: false, courses: near };

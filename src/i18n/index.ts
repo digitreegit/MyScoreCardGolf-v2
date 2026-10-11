@@ -1,5 +1,5 @@
 import { getLocales } from 'expo-localization';
-import i18n from 'i18next';
+import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 import { prefs, PREF_KEYS } from '@/lib/prefs';
@@ -14,6 +14,9 @@ export const LANGUAGES = [
   { code: 'ko', label: '한국어' },
 ] as const;
 export type LanguageCode = (typeof LANGUAGES)[number]['code'];
+
+// The app's own instance (exported below); initReactI18next hands it to useTranslation.
+const i18n = createInstance();
 
 const supported = LANGUAGES.map((l) => l.code) as string[];
 

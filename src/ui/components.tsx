@@ -100,7 +100,7 @@ export function Segmented<T extends string | number>({
   value,
   onChange,
 }: {
-  options: Array<{ value: T; label: string }>;
+  options: { value: T; label: string }[];
   value: T | null;
   onChange: (v: T) => void;
 }) {

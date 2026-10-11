@@ -3,7 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { courseNameMatches, displayScore, padStrokes, parChangePatch, parsFromHistory, toParRange } from '../scoring';
 import { emptyHoles, type Round, type RoundWithHoles } from '../types';
 
-const round = (over: Partial<Round>, pars: number[], strokes: Array<number | null> = []): RoundWithHoles => {
+const round = (over: Partial<Round>, pars: number[], strokes: (number | null)[] = []): RoundWithHoles => {
   const r: Round = {
     id: over.id ?? 'r',
     user_id: null,

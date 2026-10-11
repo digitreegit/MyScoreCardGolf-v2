@@ -10,23 +10,31 @@ function useLoader<T>(load: () => Promise<T>, initial: T) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const reload = useCallback(async () => {
-    try {
-      setData(await load());
-      setError(null);
-    } catch (e) {
-      setError(e as Error);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true; // ignore results that land after unmount or a change of `load`
+    const run = () =>
+      load().then(
+        (d) => {
+          if (!active) return;
+          setData(d);
+          setError(null);
+          setLoading(false);
+        },
+        (e: unknown) => {
+          if (!active) return;
+          setError(e as Error);
+          setLoading(false);
+        },
+      );
+    void run();
+    const off = onDataChanged(() => void run());
+    return () => {
+      active = false;
+      off();
+    };
   }, [load]);
 
-  useEffect(() => {
-    void reload();
-    return onDataChanged(() => void reload());
-  }, [reload]);
-
-  return { data, loading, error, reload };
+  return { data, loading, error };
 }
 
 export function useRounds() {

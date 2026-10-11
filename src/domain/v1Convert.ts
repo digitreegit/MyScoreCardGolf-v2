@@ -15,9 +15,9 @@ export interface V1Round {
   teeBox?: string | null;
   companion?: string;
   holes?: number;
-  relScores?: Array<number | null>;
-  strokeScores?: Array<number | null>;
-  putts?: Array<number | null>;
+  relScores?: (number | null)[];
+  strokeScores?: (number | null)[];
+  putts?: (number | null)[];
   pars?: number[];
   entryMode?: 'par' | 'stroke';
   exclude?: boolean;

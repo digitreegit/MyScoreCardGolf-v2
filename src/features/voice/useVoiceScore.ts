@@ -2,7 +2,7 @@
 // On-device recognition is requested when the OS supports it, so audio stays on the phone.
 
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { parseScoreUtterance, VOICE_CONTEXT_HINTS, type ParsedScore } from '@/domain/voice/parseScoreUtterance';
 import { speechLocale } from '@/i18n';
@@ -15,7 +15,9 @@ export function useVoiceScore(onParsed: (parsed: ParsedScore | null, transcript:
   const handled = useRef(false);
   const lastText = useRef('');
   const callback = useRef(onParsed);
-  callback.current = onParsed;
+  useLayoutEffect(() => {
+    callback.current = onParsed; // always call the latest handler from recognizer events
+  });
 
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? '';

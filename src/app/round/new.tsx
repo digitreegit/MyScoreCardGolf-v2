@@ -27,7 +27,7 @@ export default function NewRoundScreen() {
 
   const [query, setQuery] = useState('');
   const [course, setCourse] = useState<(CourseSummary & { meters?: number }) | null>(null);
-  const [nearby, setNearby] = useState<Array<CourseSummary & { meters: number }>>([]);
+  const [nearby, setNearby] = useState<(CourseSummary & { meters: number })[]>([]);
   const [locate, setLocate] = useState<'idle' | 'locating' | 'here' | 'near' | 'none' | 'failed'>(
     Platform.OS === 'web' ? 'idle' : 'locating',
   );
@@ -39,7 +39,7 @@ export default function NewRoundScreen() {
   const [saving, setSaving] = useState(false);
 
   const results = useMemo(() => (course ? [] : searchCourses(query, 8)), [query, course]);
-  const suggestions: Array<CourseSummary & { meters?: number }> = query ? results : nearby;
+  const suggestions: (CourseSummary & { meters?: number })[] = query ? results : nearby;
 
   useEffect(() => {
     if (Platform.OS === 'web') return;

@@ -1,4 +1,4 @@
-import '@/i18n';
+import { setLanguage } from '@/i18n';
 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
@@ -9,7 +9,6 @@ import { Alert, Platform, useColorScheme } from 'react-native';
 
 import { importV1DataOnce } from '@/data/v1Import';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
-import { setLanguage } from '@/i18n';
 import { prefs, PREF_KEYS } from '@/lib/prefs';
 
 SplashScreen.preventAutoHideAsync();

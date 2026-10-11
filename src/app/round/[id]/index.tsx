@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Platform, Switch, View } from 'react-native';
 
@@ -13,11 +13,8 @@ export default function RoundDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, loading } = useRound(id);
-  const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    if (data) setNotes(data.round.notes);
-  }, [data?.round.notes]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Unsaved edits only; otherwise the field shows the stored notes (which may arrive by sync).
+  const [draft, setDraft] = useState<string | null>(null);
 
   if (loading) return <Loading />;
   if (!data || data.round.deleted_at) return <Screen><Label muted>{t('common.error')}</Label></Screen>;
@@ -61,9 +58,12 @@ export default function RoundDetailScreen() {
         </View>
         <Field
           label={t('round.notes')}
-          value={notes}
-          onChangeText={setNotes}
-          onBlur={() => notes !== round.notes && void updateRound(round, { notes })}
+          value={draft ?? round.notes}
+          onChangeText={setDraft}
+          onBlur={() => {
+            if (draft == null || draft === round.notes) return setDraft(null);
+            void updateRound(round, { notes: draft }).then(() => setDraft(null));
+          }}
           multiline
           style={{ minHeight: 80, textAlignVertical: 'top', paddingTop: spacing.sm }}
         />

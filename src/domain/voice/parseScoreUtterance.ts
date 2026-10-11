@@ -94,7 +94,7 @@ function take(s: string, re: RegExp): { match: RegExpMatchArray | null; rest: st
 }
 
 function parsePutts(s: string): { putts: number | null; rest: string } {
-  const rules: Array<[RegExp, (m: RegExpMatchArray) => number]> = [
+  const rules: [RegExp, (m: RegExpMatchArray) => number][] = [
     [/\bchip(ped)? ?in\b|칩인/, () => 0],
     [/\b(no|0) putts?\b/, () => 0],
     [/\b(to|too) putt(s|ed)?\b/, () => 2],
@@ -129,7 +129,7 @@ function parseHole(s: string): { hole: number | null; rest: string } {
 }
 
 function parseRelative(s: string): { toPar: number | null; rest: string } {
-  const rules: Array<[RegExp, number]> = [
+  const rules: [RegExp, number][] = [
     [/\b(?:plus|over) (\d)\b|플러스 ?(\d)/, 1],
     [/\b(?:minus|under) (\d)\b|마이너스 ?(\d)/, -1],
     [/(?:^|\s)\+ ?(\d)\b/, 1],

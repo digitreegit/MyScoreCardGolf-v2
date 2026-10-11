@@ -15,7 +15,7 @@ export function setVoiceAiEnabled(on: boolean): void {
 
 export async function parseVoiceWithAI(
   transcript: string,
-  holes: Array<{ hole_number: number; par: number }>,
+  holes: { hole_number: number; par: number }[],
   currentHole: number,
   scoreMode: EntryMode,
 ): Promise<AiVoicePatch | null> {

@@ -53,8 +53,7 @@ export default function ScoreEntryScreen() {
     prefs.get(PREF_KEYS.scoreLayout) === 'landscape' ? 'landscape' : 'portrait',
   );
   const [mode] = useState<EntryMode>(getScoreMode);
-  const layoutRef = useRef(layout);
-  layoutRef.current = layout;
+  const layoutRef = useRef(layout); // read by the focus effect without re-subscribing it
 
   // Rotate only after the push/replace animation finishes: rotating mid-transition froze the
   // screen on iOS (seen when opening a scanned round). The timer covers entries with no transition.
@@ -81,6 +80,7 @@ export default function ScoreEntryScreen() {
   const toggleLayout = () => {
     const next: Layout = layout === 'portrait' ? 'landscape' : 'portrait';
     prefs.set(PREF_KEYS.scoreLayout, next);
+    layoutRef.current = next;
     setLayout(next);
     if (Platform.OS !== 'web') void lockFor(next); // no navigation transition here, rotate right away
   };
@@ -114,67 +114,65 @@ export default function ScoreEntryScreen() {
 
   const { userId } = useAuth();
 
-  const onVoice = useCallback(
-    async (parsed: ParsedScore | null, transcript: string) => {
-      if (__DEV__) console.log('[voice]', JSON.stringify(transcript), JSON.stringify(parsed));
-      // 1) On-device rule parser (free, offline).
-      let holeNumber = parsed?.hole ?? sel.hole;
-      let target = holes.find((h) => h.hole_number === holeNumber);
-      const patch: Partial<RoundHole> = {};
-      if (parsed && target) {
-        const strokes = resolveStrokes(parsed, target.par, mode);
-        if (strokes != null) patch.strokes = strokes;
-        if (parsed.putts != null) patch.putts = parsed.putts;
-      }
+  // Not wrapped in useCallback: the React Compiler memoizes it, and useVoiceScore keeps the latest one.
+  const onVoice = async (parsed: ParsedScore | null, transcript: string) => {
+    if (__DEV__) console.log('[voice]', JSON.stringify(transcript), JSON.stringify(parsed));
+    // 1) On-device rule parser (free, offline).
+    let holeNumber = parsed?.hole ?? sel.hole;
+    let target = holes.find((h) => h.hole_number === holeNumber);
+    const patch: Partial<RoundHole> = {};
+    if (parsed && target) {
+      const strokes = resolveStrokes(parsed, target.par, mode);
+      if (strokes != null) patch.strokes = strokes;
+      if (parsed.putts != null) patch.putts = parsed.putts;
+    }
 
-      // 2) Optional AI fallback when the rule parser found no score or putts, or only got there by
-      //    correcting likely mishearings ("play one part" → par). A guessed result is not applied
-      //    if the AI can't confirm it.
-      let viaAi = false;
-      const aiOn = !!transcript && !!userId && isVoiceAiEnabled();
-      if (aiOn && parsed?.guessed) {
-        for (const k of Object.keys(patch) as Array<keyof RoundHole>) delete patch[k];
+    // 2) Optional AI fallback when the rule parser found no score or putts, or only got there by
+    //    correcting likely mishearings ("play one part" → par). A guessed result is not applied
+    //    if the AI can't confirm it.
+    let viaAi = false;
+    const aiOn = !!transcript && !!userId && isVoiceAiEnabled();
+    if (aiOn && parsed?.guessed) {
+      for (const k of Object.keys(patch) as (keyof RoundHole)[]) delete patch[k];
+    }
+    if (!Object.keys(patch).length && aiOn) {
+      setVoiceMsg(t('score.voiceAiThinking'));
+      const ai = await parseVoiceWithAI(
+        transcript,
+        holes.map((h) => ({ hole_number: h.hole_number, par: h.par })),
+        sel.hole,
+        mode,
+      );
+      if (__DEV__) console.log('[voice] ai', JSON.stringify(ai));
+      if (ai) {
+        holeNumber = ai.hole ?? sel.hole;
+        target = holes.find((h) => h.hole_number === holeNumber);
+        if (ai.strokes != null) patch.strokes = ai.strokes;
+        if (ai.putts != null) patch.putts = ai.putts;
+        viaAi = true;
       }
-      if (!Object.keys(patch).length && aiOn) {
-        setVoiceMsg(t('score.voiceAiThinking'));
-        const ai = await parseVoiceWithAI(
-          transcript,
-          holes.map((h) => ({ hole_number: h.hole_number, par: h.par })),
-          sel.hole,
-          mode,
-        );
-        if (__DEV__) console.log('[voice] ai', JSON.stringify(ai));
-        if (ai) {
-          holeNumber = ai.hole ?? sel.hole;
-          target = holes.find((h) => h.hole_number === holeNumber);
-          if (ai.strokes != null) patch.strokes = ai.strokes;
-          if (ai.putts != null) patch.putts = ai.putts;
-          viaAi = true;
-        }
-      }
+    }
 
-      if (!target || !Object.keys(patch).length) {
-        setVoiceMsg(t('score.voiceNotUnderstood'));
-        return;
-      }
-      await updateHole(target, patch);
-      // Show what was actually saved, so a misheard score is easy to spot and fix.
-      const saved = [
-        t('score.voiceSavedHole', { hole: target.hole_number }),
-        patch.strokes == null
-          ? null
-          : mode === 'par'
-            ? `${t('score.score')} ${displayScore(patch.strokes, target.par, mode)}`
-            : t('score.voiceSavedStrokes', { count: patch.strokes }),
-        patch.putts != null ? t('score.voiceSavedPutts', { count: patch.putts }) : null,
-      ]
-        .filter(Boolean)
-        .join(' · ');
-      setVoiceMsg(t(viaAi ? 'score.voiceAiSaved' : 'score.voiceSaved', { saved, text: transcript }));
-      if (target.hole_number < holes.length) setSel({ hole: target.hole_number + 1, field: 'strokes' });
-    },
-    [holes, sel.hole, t, userId, mode],
-  );
+    if (!target || !Object.keys(patch).length) {
+      setVoiceMsg(t('score.voiceNotUnderstood'));
+      return;
+    }
+    await updateHole(target, patch);
+    // Show what was actually saved, so a misheard score is easy to spot and fix.
+    const saved = [
+      t('score.voiceSavedHole', { hole: target.hole_number }),
+      patch.strokes == null
+        ? null
+        : mode === 'par'
+          ? `${t('score.score')} ${displayScore(patch.strokes, target.par, mode)}`
+          : t('score.voiceSavedStrokes', { count: patch.strokes }),
+      patch.putts != null ? t('score.voiceSavedPutts', { count: patch.putts }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    setVoiceMsg(t(viaAi ? 'score.voiceAiSaved' : 'score.voiceSaved', { saved, text: transcript }));
+    if (target.hole_number < holes.length) setSel({ hole: target.hole_number + 1, field: 'strokes' });
+  };
 
   const voice = useVoiceScore((p, text) => void onVoice(p, text));
 

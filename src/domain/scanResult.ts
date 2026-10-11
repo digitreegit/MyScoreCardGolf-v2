@@ -7,13 +7,13 @@ export interface ScanResult {
   played_on: string | null;
   holes_count: 9 | 18;
   notation: 'strokes' | 'to_par';
-  pars: Array<number | null>;
-  players: Array<{ name: string | null; scores: Array<number | null>; putts: Array<number | null> }>;
+  pars: (number | null)[];
+  players: { name: string | null; scores: (number | null)[]; putts: (number | null)[] }[];
   confidence: 'high' | 'medium' | 'low';
 }
 
 /** Absolute strokes per hole for one scanned player (to-par cards converted with the scanned pars). */
-export function scannedHoles(scan: ScanResult, playerIndex: number): Array<{ par: number; strokes: number | null; putts: number | null }> {
+export function scannedHoles(scan: ScanResult, playerIndex: number): { par: number; strokes: number | null; putts: number | null }[] {
   const player = scan.players[playerIndex];
   const holesCount = scan.holes_count === 9 ? 9 : 18;
   return Array.from({ length: holesCount }, (_, i) => {
